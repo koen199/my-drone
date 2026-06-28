@@ -1,0 +1,25 @@
+[project]
+name = "drone_control_system"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pytest>=7.0",
+    "matplotlib>=3.7",
+    "scipy>=1.15.3",
+]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools.packages.find]
+include = ["drone_control_system*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.uv.workspace]
+members = [
+    "drone-control-system",
+]
