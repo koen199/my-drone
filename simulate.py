@@ -132,41 +132,32 @@ def run_trajectory_and_sensors(
 
 def run_ahrs(
     sensor_meas: dict,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Run AHRS filter over measured sensor data.
 
     Returns
     -------
-    estimated     : (N, 3) AHRS Euler angles (rad)
-    gravity_refs  : (N, 3) AHRS gravity EMA reference in body frame
-    mag_refs      : (N, 3) AHRS mag EMA reference in body frame
+    estimated  : (N, 3) fused AHRS Euler angles (rad)
+    triad      : (N, 3) absolute TRIAD orientation estimate Euler angles (rad)
     """
     gyro  = sensor_meas["gyro"]
     accel = sensor_meas["accel"]
     mag   = sensor_meas["mag"]
     n = len(gyro)
 
-    ahrs = AHRSFilter(
-        dt=DT,
-        gravity_gain=0.01,
-        mag_gain=0.01,
-        ema_window_accel_s=60.0,
-        ema_window_mag_s=60.0,
-    )
-    #ahrs.initialize(accel[0], mag[0])
-    ahrs.initialize(GRAVITY_SPECIFIC_FORCE_NAV, MAG_NORTH_NAV)
+    ahrs = AHRSFilter(dt=DT, correction_gain=0.01)
+    ahrs.initialize(accel[0], mag[0])
 
-    estimated    = np.zeros((n, 3))
-    gravity_refs = np.zeros((n, 3))
-    mag_refs     = np.zeros((n, 3))
+    estimated = np.zeros((n, 3))
+    triad     = np.zeros((n, 3))
 
     for k in range(n):
         roll, pitch, yaw = ahrs.update(gyro[k], accel[k], mag[k])
-        estimated[k]    = [roll, pitch, yaw]
-        gravity_refs[k] = ahrs.gravity_ref_body
-        mag_refs[k]     = ahrs.mag_ref_body
+        estimated[k] = [roll, pitch, yaw]
+        R_triad = ahrs.triad_matrix
+        triad[k] = rotation_matrix_to_euler(R_triad) if R_triad is not None else np.nan
 
-    return estimated, gravity_refs, mag_refs
+    return estimated, triad
 
 
 # ---------------------------------------------------------------------------
@@ -240,35 +231,34 @@ def _plot_sensor_comparison(sensor_true: dict, sensor_meas: dict) -> None:
     plt.tight_layout()
 
 
-def _plot_reference_vectors(
-    sensor_true: dict,
-    gravity_refs: np.ndarray,
-    mag_refs: np.ndarray,
+def _plot_triad_vs_fused(
+    euler_true: np.ndarray,
+    estimated: np.ndarray,
+    triad: np.ndarray,
 ) -> None:
+    """Compare the raw (noisy) TRIAD absolute estimate against the fused estimate.
+
+    The TRIAD estimate responds instantaneously but is noisy; the fused estimate
+    blends it into the gyro integration through the correction gain, yielding a
+    smooth track that still follows the absolute reference over time.
+    """
     import matplotlib.pyplot as plt
 
     t = np.arange(N_STEPS) * DT
-    axis_labels = ["X", "Y", "Z"]
-    rows = [
-        ("Gravity ref (m/s²)", sensor_true["accel"], gravity_refs),
-        ("Mag ref (norm)",     sensor_true["mag"],   mag_refs),
-    ]
+    labels = ["Roll", "Pitch", "Yaw"]
 
-    fig, axes = plt.subplots(2, 3, figsize=(13, 6), sharex=True)
-    fig.suptitle("Reference Vectors — True vs AHRS EMA Estimate")
+    fig, axes = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+    fig.suptitle("Absolute TRIAD Estimate vs Fused AHRS Estimate")
 
-    for row, (row_label, truth, ref) in enumerate(rows):
-        for col, ax_label in enumerate(axis_labels):
-            ax = axes[row, col]
-            ax.plot(t, truth[:, col], label="True (noiseless)", linewidth=1.2)
-            ax.plot(t, ref[:, col], "--", label="AHRS EMA ref", linewidth=1.0)
-            ax.set_ylabel(f"{row_label} {ax_label}")
-            ax.grid(True, alpha=0.3)
-            if row == 0:
-                ax.set_title(f"Axis {ax_label}")
-            if row == 1:
-                ax.set_xlabel("Time (s)")
-    axes[0, 2].legend(fontsize=7, loc="upper right")
+    for i, (ax, label) in enumerate(zip(axes, labels)):
+        ax.plot(t, np.rad2deg(triad[:, i]), label="TRIAD (raw)",
+                linewidth=0.6, alpha=0.5)
+        ax.plot(t, np.rad2deg(estimated[:, i]), label="Fused AHRS", linewidth=1.2)
+        ax.plot(t, np.rad2deg(euler_true[:, i]), "--", label="True", linewidth=1.0)
+        ax.set_ylabel(f"{label} (deg)")
+        ax.grid(True, alpha=0.3)
+    axes[0].legend(fontsize=8, loc="upper right")
+    axes[-1].set_xlabel("Time (s)")
     plt.tight_layout()
 
 
@@ -278,7 +268,7 @@ def _plot_reference_vectors(
 
 def run_simulation(noise_cfg: SensorNoiseConfig | None = None) -> None:
     euler_true, sensor_true, sensor_meas = run_trajectory_and_sensors(noise_cfg)
-    estimated, gravity_refs, mag_refs = run_ahrs(sensor_meas)
+    estimated, triad = run_ahrs(sensor_meas)
 
     _print_summary(euler_true, estimated)
 
@@ -290,7 +280,7 @@ def run_simulation(noise_cfg: SensorNoiseConfig | None = None) -> None:
 
     _plot_euler_angles(euler_true, estimated)
     _plot_sensor_comparison(sensor_true, sensor_meas)
-    _plot_reference_vectors(sensor_true, gravity_refs, mag_refs)
+    _plot_triad_vs_fused(euler_true, estimated, triad)
     plt.show()
 
 

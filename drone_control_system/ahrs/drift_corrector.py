@@ -1,93 +1,56 @@
 import numpy as np
-from .math_utils import safe_normalize, skew_symmetric
-
-# Reference vectors in the navigation frame (ENU).
-# GRAVITY_NAV is the specific force direction (what the accelerometer reads when
-# stationary in ENU), not the gravitational acceleration.  Specific force = -g,
-# so it points upward (+Z) in ENU when the drone is level.
-GRAVITY_NAV = np.array([0.0, 0.0, 9.81])
-MAG_NORTH_NAV = np.array([0.0, 1.0, 0.0])
-
-_EPS = 1e-10
+from .math_utils import rotation_log, rotation_exp
 
 
-def _small_angle_correction(theoretical_body: np.ndarray,
-                             reference_body: np.ndarray,
-                             gain: float) -> np.ndarray:
-    """Compute a small-angle Rodrigues correction matrix from two body-frame vectors."""
-    try:
-        t = safe_normalize(theoretical_body)
-        r = safe_normalize(reference_body)
-    except ValueError:
-        return np.eye(3)
+def compute_orientation_error(R_triad: np.ndarray, R_gyro: np.ndarray) -> np.ndarray:
+    """Rotational difference between the TRIAD and gyroscope orientation estimates.
 
-    error = np.cross(t, r)
-    theta = np.linalg.norm(error)
-    if theta < _EPS:
-        return np.eye(3)
-
-    axis = error / theta
-    corrected_angle = gain * theta
-    return np.eye(3) + corrected_angle * skew_symmetric(axis)
-
-
-def compute_gravity_correction(
-    R: np.ndarray,
-    gravity_ref_body: np.ndarray,
-    gain: float,
-) -> np.ndarray:
-    """Compute roll/pitch drift correction from accelerometer reference.
+    R_err = R_triad @ R_gyro.T is the rotation required to align the gyroscope
+    estimate with the absolute (TRIAD) orientation estimate. Equals the identity
+    when the two estimates coincide.
 
     Parameters
     ----------
-    R : ndarray, shape (3,3)
-        Current rotation matrix R_nb.
-    gravity_ref_body : ndarray, shape (3,)
-        EMA-filtered gravity estimate in the body frame.
-    gain : float
-        Correction gain K_g.
+    R_triad : ndarray, shape (3,3)
+        Absolute orientation estimate from the TRIAD algorithm (R_nb).
+    R_gyro : ndarray, shape (3,3)
+        Propagated gyroscope orientation estimate (R_nb).
 
     Returns
     -------
-    R_g : ndarray, shape (3,3)
-        Small-angle correction rotation matrix.
+    R_err : ndarray, shape (3,3)
+        Orientation error rotation matrix.
     """
-    g_theoretical_body = R @ GRAVITY_NAV
-    return _small_angle_correction(g_theoretical_body, gravity_ref_body, gain)
+    return R_triad @ R_gyro.T
 
 
-def compute_mag_correction(
-    R: np.ndarray,
-    mag_ref_body: np.ndarray,
-    gain: float,
-) -> np.ndarray:
-    """Compute yaw drift correction from magnetometer reference.
+def compute_correction(R_err: np.ndarray, gain: float) -> np.ndarray:
+    """Scale the orientation error down to a partial correction rotation.
+
+    The full error R_err is mapped to its rotation vector phi via the matrix
+    logarithm, scaled by the correction gain, and mapped back to a rotation:
+        R_corr = exp(beta * log(R_err)).
 
     Parameters
     ----------
-    R : ndarray, shape (3,3)
-        Current rotation matrix R_nb.
-    mag_ref_body : ndarray, shape (3,)
-        EMA-filtered magnetometer estimate in the body frame.
+    R_err : ndarray, shape (3,3)
+        Orientation error rotation matrix from compute_orientation_error().
     gain : float
-        Correction gain K_m.
+        Correction gain beta, with 0 < beta << 1. For example beta = 0.01 applies
+        roughly one percent of the estimated error per update.
 
     Returns
     -------
-    R_m : ndarray, shape (3,3)
-        Small-angle yaw correction rotation matrix.
+    R_corr : ndarray, shape (3,3)
+        Partial correction rotation matrix.
     """
-    mag_theoretical_body = R @ MAG_NORTH_NAV
-    return _small_angle_correction(mag_theoretical_body, mag_ref_body, gain)
+    phi = rotation_log(R_err)
+    return rotation_exp(gain * phi)
 
 
-def apply_drift_correction(
-    R: np.ndarray,
-    R_g: np.ndarray,
-    R_m: np.ndarray,
-) -> np.ndarray:
-    """Apply gravity and magnetic corrections to the propagated orientation.
+def apply_drift_correction(R_corr: np.ndarray, R_gyro: np.ndarray) -> np.ndarray:
+    """Apply the partial correction to the gyroscope orientation estimate.
 
-    Returns R_g @ R_m @ R (pre-multiplication in body frame convention).
+    Returns R_corr @ R_gyro (pre-multiplication in the navigation frame).
     """
-    return R_g @ R_m @ R
+    return R_corr @ R_gyro

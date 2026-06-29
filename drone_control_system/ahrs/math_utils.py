@@ -37,3 +37,37 @@ def rodrigues_rotation(axis: np.ndarray, angle: float) -> np.ndarray:
 def rodrigues_small_angle(axis: np.ndarray, angle: float) -> np.ndarray:
     """Linearised Rodrigues correction: I + angle * skew(axis). Valid for small angles."""
     return np.eye(3) + angle * skew_symmetric(axis)
+
+
+def rotation_log(R: np.ndarray, eps: float = 1e-10) -> np.ndarray:
+    """Matrix logarithm of a rotation matrix -> rotation vector phi = theta * u.
+
+    Inverse Rodrigues' formula. The angle is recovered from the trace,
+    theta = arccos((tr(R) - 1) / 2), and the axis from the off-diagonal terms.
+    As theta -> 0 the rotation vector tends to zero, so the zero vector is
+    returned to bypass the 1/sin(theta) singularity.
+    """
+    cos_theta = (np.trace(R) - 1.0) / 2.0
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)
+    theta = np.arccos(cos_theta)
+    if theta < eps:
+        return np.zeros(3)
+
+    off_diagonal = np.array([
+        R[2, 1] - R[1, 2],
+        R[0, 2] - R[2, 0],
+        R[1, 0] - R[0, 1],
+    ])
+    return (theta / (2.0 * np.sin(theta))) * off_diagonal
+
+
+def rotation_exp(phi: np.ndarray, eps: float = 1e-10) -> np.ndarray:
+    """Exponential map: rotation vector phi -> rotation matrix via Rodrigues' formula.
+
+    The rotation angle is theta = ||phi|| about the unit axis phi / theta. Returns
+    the identity for a near-zero rotation vector.
+    """
+    theta = np.linalg.norm(phi)
+    if theta < eps:
+        return np.eye(3)
+    return rodrigues_rotation(phi / theta, theta)

@@ -61,8 +61,7 @@ def test_rotation_matrix_before_initialize_raises():
 
 def test_static_convergence():
     rng = np.random.default_rng(42)
-    f = AHRSFilter(dt=0.01, gravity_gain=0.01, mag_gain=0.01,
-                   ema_window_accel_s=60.0, ema_window_mag_s=60.0)
+    f = AHRSFilter(dt=0.01, correction_gain=0.01)
     f.initialize(
         accel_body=np.array([0.0, 0.0, 9.81]),
         mag_body=np.array([0.0, 1.0, 0.0]),
@@ -94,8 +93,7 @@ def test_yaw_tracking():
     gyro = np.array([0.0, 0.0, yaw_rate])
     accel = np.array([0.0, 0.0, 9.81])
 
-    f = AHRSFilter(dt=dt, gravity_gain=0.01, mag_gain=0.05,
-                   ema_window_accel_s=60.0, ema_window_mag_s=5.0)
+    f = AHRSFilter(dt=dt, correction_gain=0.05)
     f.initialize(accel_body=accel, mag_body=MAG_NORTH.copy())
 
     # Rotate true mag vector along with the drone

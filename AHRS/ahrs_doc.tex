@@ -163,18 +163,18 @@ R_{k+1}^{nb} \approx \left(I + \Omega(\boldsymbol{\omega})\Delta t\right) R_{k}^
 
 While gyroscope integration provides smooth and high-frequency orientation estimates, it inevitably accumulates drift due to sensor bias and measurement noise. To compensate for this drift, the integrated orientation is continuously corrected using an absolute orientation estimate obtained from the accelerometer and magnetometer.
 
-Rather than using the instantaneous sensor measurements directly, exponentially filtered versions of the normalized accelerometer and magnetometer measurements are maintained:
+The raw accelerometer and magnetometer measurements are normalized to unit length directly at each time step $k$:
 \[
-\bar{a}_k^b = (1-\alpha)\bar{a}_{k-1}^b + \alpha a_k^b,
+\tilde{a}_k^b = \frac{a_k^b}{\|a_k^b\|},
 \]
 \[
-\bar{m}_k^b = (1-\alpha)\bar{m}_{k-1}^b + \alpha m_k^b,
+\tilde{m}_k^b = \frac{m_k^b}{\|m_k^b\|}.
 \]
-where $\alpha \in (0,1)$ is the exponential smoothing factor. After each update, both vectors are normalized to unit length. The filtered vectors are then used as inputs to the TRIAD algorithm described in the previous section, yielding an absolute orientation estimate
+These raw normalized measurements are used directly as inputs to the TRIAD algorithm described in the previous section, yielding an absolute orientation estimate
 \[
 R_{\mathrm{triad}}^{nb}.
 \]
-Using exponentially filtered measurements suppresses sensor noise while reducing the influence of transient linear accelerations and short-term magnetic disturbances.
+By utilizing the raw measurements directly, the algorithm avoids the phase lag introduced by low-pass filtering, ensuring that the absolute reference alignment responds instantaneously to orientation changes.
 
 Meanwhile, the gyroscope measurements are integrated to propagate the current orientation estimate,
 \[
@@ -191,19 +191,31 @@ R_{\mathrm{triad}}^{nb}
 \]
 If both orientation estimates coincide, then $R_{\mathrm{err}} = I$, where $I$ denotes the identity matrix. Otherwise, $R_{\mathrm{err}}$ represents the rotation required to align the gyroscope estimate with the absolute orientation estimate.
 
-Applying this full correction instantaneously would introduce abrupt changes in the estimated orientation. Instead, only a small fraction of the correction is applied during each update. Let
+Applying this full correction instantaneously would introduce abrupt changes in the estimated orientation, especially when relying on raw measurements that contain sensor noise and transient disturbances. Instead, only a small fraction of the correction is applied during each update. Let
 \[
 R_{\mathrm{err}}
 =
-\exp(\phi^\wedge),
+\exp([\phi]_\times),
 \]
-where $\phi \in \mathbb{R}^3$ is the rotation vector corresponding to the orientation error and $(\cdot)^\wedge$ denotes the skew-symmetric matrix operator. A partial correction is then obtained by scaling the rotation vector:
+where $\phi \in \mathbb{R}^3$ is the rotation vector corresponding to the orientation error and $[\cdot]_\times$ denotes the skew-symmetric matrix operator. 
+
+To extract the exponent vector $\phi = \theta \mathbf{u}$ from the $3 \times 3$ rotation matrix $R_{\mathrm{err}}$, the matrix logarithm is computed via the inverse Rodrigues' formula. The rotation angle $\theta$ is derived from the matrix trace:
+\[
+\theta = \arccos\left(\frac{\text{tr}(R_{\mathrm{err}}) - 1}{2}\right),
+\]
+where $\theta \in [0, \pi]$. For nominal conditions where $\theta \neq 0$, the rotation vector is isolated using the off-diagonal elements of $R_{\mathrm{err}}$:
+\[
+\phi = \frac{\theta}{2\sin(\theta)} \begin{bmatrix} R_{32} - R_{23} \\ R_{13} - R_{31} \\ R_{21} - R_{12} \end{bmatrix},
+\]
+where $R_{ij}$ denotes the element at row $i$ and column $j$. Numerically, when the orientation error approaches zero ($\theta \to 0$), the singularity is bypassed by setting $\phi = [0, 0, 0]^T$ as $\lim_{\theta \to 0} \frac{\theta}{\sin(\theta)} = 1$. 
+
+A partial correction is then obtained by scaling this extracted rotation vector:
 \[
 R_{\mathrm{corr}}
 =
-\exp(\beta \phi^\wedge),
+\exp(\beta [\phi]_\times),
 \]
-where $0 < \beta \ll 1$ is a correction gain. For example, choosing $\beta = 0.01$ applies approximately one percent of the estimated orientation error during each update.
+where $0 < \beta \ll 1$ is a correction gain. For example, choosing $\beta = 0.01$ applies approximately one percent of the estimated orientation error during each update, effectively smoothing out high-frequency noise and transient anomalies through the correction gain itself rather than preprocessing the sensor inputs.
 
 Finally, the gyroscope orientation estimate is corrected according to
 \[
