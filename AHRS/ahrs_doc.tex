@@ -8,18 +8,18 @@
 \date{}
 
 \begin{document}
-	
+
 	\maketitle
-	
-	
+
+
 \section{Introduction}
 
 	An \textit{Attitude and Heading Reference System} (AHRS) is the system that will estimate the orientation of our drone in three-dimensional space. An AHRS outputs of roll, pitch, and heading (yaw), which describe the attitude of the body relative to a reference frame.
-	
+
 	\vspace{1em}
-	
+
 	\noindent An AHRS typically combines data from gyroscopes, accelerometers, and magnetometers. Through sensor fusion algorithms, these measurements are used to produce a stable and accurate estimate of orientation while mitigating the limitations of individual sensors.
-	
+
 \section{Reference Frame Definitions}
 
 Two reference frames are used throughout this work: the body-fixed frame ($b$) and the world-fixed frame ($n$).
@@ -42,32 +42,69 @@ The body-fixed frame ($b$) is attached to the drone and moves with it. Its axes 
 \end{itemize}
 
 
-	
+
 \section{The conceptual idea}
 
 	In this section, we present the conceptual foundation of our AHRS implementation. The system relies on three sensors:
 
 	\begin{itemize}
 		\item Gyroscope: measures the angular velocity vector $\boldsymbol{\omega}$ around each axis of the body-fixed frame $b$.
-		
+
 		\item Accelerometer: measures the specific force acting on the body as a three-dimensional vector in the body-fixed frame $b$. When the body is not subject to linear acceleration, the measurement corresponds to the gravity vector.
-		
+
 		\item Magnetometer: measures the local Earth's magnetic field as a three-dimensional vector in the body-fixed frame $b$. This measurement provides a reference for determining heading relative to magnetic north.
 
-		
+
 	\end{itemize}
 
 	\noindent The gyroscope provides the high-frequency component of the orientation estimate since the measured angular velocity can be integrated to determine the body's orientation over time. However, relying solely on gyroscope measurements is not sufficient, since sensor biases and noise accumulate during integration, causing the estimated orientation to drift over time.
-	
+
 	\vspace{1em}
-	
+
 	\noindent To mitigate this drift, measurements from the accelerometer and magnetometer are incorporated. The accelerometer cannot directly provide the gravity vector during flight, since its measurements are corrupted by the drone's linear accelerations. Nevertheless, under the assumption that these accelerations average to zero over sufficiently long time intervals, the average accelerometer measurement converges to the gravity vector. Similarly, the magnetometer provides a measurement of the Earth's magnetic field, which is assumed to be constant in the earth-fixed frame $n$.
-	
+
 	\vspace{1em}
-	
+
 	\noindent Consequently, the gravity and magnetic field vectors serve as stable low-frequency references that can be used to correct the long-term drift of the orientation estimate while preserving the gyroscope's fast dynamic response.
-	
+
 \section{Description of the Algorithm}
+
+\subsection{System Initialization}
+
+Before the AHRS can reliably track orientation using gyroscope integration, an initial orientation matrix $R_0^{nb}$ must be established. When the drone is powered on and stationary on the ground, the initial acceleration measurement corresponds purely to gravity, and the magnetometer measures the static local Earth's magnetic field. We can exploit these physical vector readings to construct a deterministic, orthogonal coordinate system via the Triad method.
+
+A rotation matrix $R^{sd}$ transforms a vector from a source frame $s$ to a destination frame $d$. Conceptually, it is structured such that \textbf{each column represents a unit basis vector of the source frame $s$ expressed in the coordinates of the destination frame $d$.} Because our sensor measurements naturally provide the navigation frame's axes (gravity and magnetic north) expressed in body-frame coordinates, we can construct the matrix $R_0^{nb}$ (from navigation $n$ to body $b$). The columns of $R_0^{nb}$ will simply be the navigation frame's basis vectors (East, North, Up) expressed in body-frame coordinates.
+
+\vspace{1em}
+\noindent Let $a_{\text{init}}^b$ and $m_{\text{init}}^b$ be the initial normalized vector measurements of the accelerometer and magnetometer expressed in the body frame:
+\[
+a^b = \frac{a_{\text{init}}^b}{\|a_{\text{init}}^b\|}, \quad m^b = \frac{m_{\text{init}}^b}{\|m_{\text{init}}^b\|}
+\]
+
+\noindent According to the ENU reference frame definitions, the true gravity vector points along the negative $z$-axis ($g$-frame), meaning the Up axis ($z$) points directly opposite to gravity. Crucially, a stationary accelerometer measures \textit{proper acceleration}---the upward reaction force exerted by the ground to oppose gravity. Consequently, the positive body-frame acceleration vector $a^b$ points physically upward, meaning it directly represents the tracking of the navigation frame's Up basis vector ($\mathbf{u}^b$) without requiring negation:
+\[
+\mathbf{u}^b = a^b
+\]
+
+\noindent Next, the raw magnetometer vector $m^b$ cannot be used directly as the North basis vector because it is generally not perfectly orthogonal to the gravity vector due to the magnetic inclination angle (dip angle). To extract a clean East-West lateral axis that is strictly perpendicular to the vertical axis, we compute the cross product of the magnetic vector and the vertical axis. This isolates the navigation frame's East basis vector ($\mathbf{e}^b$) expressed in the body frame:
+\[
+\mathbf{e}^b = \frac{m^b \times \mathbf{u}^b}{\|m^b \times \mathbf{u}^b\|}
+\]
+
+\noindent Finally, to complete the right-handed coordinate system and obtain the true horizontal North basis vector ($\mathbf{n}^b$) expressed in the body frame, we take the cross product of our newly computed Up and East basis vectors:
+\[
+\mathbf{n}^b = \mathbf{u}^b \times \mathbf{e}^b
+\]
+
+\noindent Because $\mathbf{e}^b$, $\mathbf{n}^b$, and $\mathbf{u}^b$ are the mutually orthogonal unit basis vectors of the source frame ($n$) expressed in the destination frame ($b$), we pack them directly into the columns of $R_0^{nb}$:
+\[
+R_0^{nb} =
+\begin{bmatrix}
+	\mathbf{e}^b & \mathbf{n}^b & \mathbf{u}^b
+\end{bmatrix}
+\]
+
+
 
 \subsection{Computing New Orientation}
 
@@ -113,136 +150,69 @@ R_{k+1}^{nb} \approx \left(I + \Omega(\boldsymbol{\omega})\Delta t\right) R_{k}^
 	\item $I$ is the $3\times3$ identity matrix.
 	\item $\Omega(\boldsymbol{\omega})$ is the skew-symmetric $3\times3$ matrix encoding the body-frame angular velocity vector $\boldsymbol{\omega} = [\omega_x, \omega_y, \omega_z]^T$:
 	\[
-	\Omega(\boldsymbol{\omega}) = \begin{bmatrix} 
-		0 & -\omega_z & \omega_y \\ 
-		\omega_z & 0 & -\omega_x \\ 
-		-\omega_y & \omega_x & 0 
+	\Omega(\boldsymbol{\omega}) = \begin{bmatrix}
+		0 & -\omega_z & \omega_y \\
+		\omega_z & 0 & -\omega_x \\
+		-\omega_y & \omega_x & 0
 	\end{bmatrix}
 	\]
 \end{itemize}
 
-\subsection{Estimation of Reference Vectors}
 
-As discussed previously, the accelerometer and magnetometer are used to estimate low-frequency reference vectors that can be used to correct the drift that accumulates in the gyroscope-based orientation estimate over time.
+\subsection{Orientation Drift Correction}
 
-\vspace{1em}
-\noindent For the accelerometer, we know that when the drone is not accelerating, the measured acceleration corresponds solely to the gravitational acceleration vector. During flight, however, the accelerometer also measures accelerations caused by vehicle motion. We assume that these additional accelerations have a zero mean over a sufficiently long time interval. Consequently, applying a low-pass filter to the accelerometer measurements yields an estimate of the gravity vector. The same principle can be applied to the magnetometer measurements to obtain an estimate of the Earth's magnetic field vector.
+While gyroscope integration provides smooth and high-frequency orientation estimates, it inevitably accumulates drift due to sensor bias and measurement noise. To compensate for this drift, the integrated orientation is continuously corrected using an absolute orientation estimate obtained from the accelerometer and magnetometer.
 
-\vspace{1em}
-\noindent The following procedure describes the estimation of the gravity vector. The estimation of the magnetic north vector is performed analogously.
-
-\vspace{1em}
-\noindent First, the measured acceleration vector ($a_m^b$), expressed in the body-fixed frame ($b$), is transformed into the navigation frame ($n$):
-
+Rather than using the instantaneous sensor measurements directly, exponentially filtered versions of the normalized accelerometer and magnetometer measurements are maintained:
 \[
-a_m^n = \left(R_k^{nb}\right)^{-1} a_m^b.
+\bar{a}_k^b = (1-\alpha)\bar{a}_{k-1}^b + \alpha a_k^b,
 \]
-
-\vspace{1em}
-\noindent Next, an exponential moving average is updated using the transformed measurement and the previous estimate ($a_k^n$):
-
 \[
-a_{k+1}^n = \alpha a_m^n + (1-\alpha)a_k^n.
+\bar{m}_k^b = (1-\alpha)\bar{m}_{k-1}^b + \alpha m_k^b,
 \]
-
-\vspace{1em}
-\noindent The filter coefficient ($\alpha$) is chosen as
-
+where $\alpha \in (0,1)$ is the exponential smoothing factor. After each update, both vectors are normalized to unit length. The filtered vectors are then used as inputs to the TRIAD algorithm described in the previous section, yielding an absolute orientation estimate
 \[
-\alpha = \frac{2}{N+1}
+R_{\mathrm{triad}}^{nb}.
 \]
+Using exponentially filtered measurements suppresses sensor noise while reducing the influence of transient linear accelerations and short-term magnetic disturbances.
 
-\noindent where (N) is the effective averaging window expressed in samples.
-For example, if an averaging window of 60 seconds is desired and the sampling period is ($\Delta t = 0.01,\mathrm{s}$), then
-
+Meanwhile, the gyroscope measurements are integrated to propagate the current orientation estimate,
 \[
-N = \frac{60}{0.01} = 6000
+R_{\mathrm{gyro}}^{nb}.
 \]
+Although this estimate accurately captures rapid rotational motion, its orientation gradually drifts over time.
 
-\noindent As ($N$) increases, the estimate becomes less sensitive to short-term disturbances and converges more closely to the underlying gravity vector.
-
-\vspace{1em}
-\noindent Finally we need to transform the new estimate back to the $b$ frame:
+To determine the accumulated drift, the rotational difference between the gyroscope estimate and the TRIAD estimate is computed as
 \[
-g^b_m = R_k^{nb} a_{k+1}^n
+R_{\mathrm{err}}
+=
+R_{\mathrm{triad}}^{nb}
+\left(R_{\mathrm{gyro}}^{nb}\right)^T.
 \]
-We can now use the $g^b_m$ as an estimate of the gravity vector.
-A similar process can be used to obtain an a vector $m^b_m$ pointing to the magnetic north.
+If both orientation estimates coincide, then $R_{\mathrm{err}} = I$, where $I$ denotes the identity matrix. Otherwise, $R_{\mathrm{err}}$ represents the rotation required to align the gyroscope estimate with the absolute orientation estimate.
 
-
-\subsection{Drift Correction}
-
-\noindent In this section, we discuss how to correct for the drift caused by integrating the angular velocities of the gyroscope.
-
-\vspace{1em}
-\noindent We use a measured estimate of the gravity vector $g_m^b$ to correct for roll and pitch drift. Given our current estimate of the orientation $R^{nb}_k$, we can compute the theoretical orientation of the gravity vector in the body frame, denoted as $g_t^b$, and then compute the angle between them.
-
-\vspace{1em}
-\noindent The theoretical orientation of gravity in the navigation ($n$) frame is defined using the acceleration due to gravity:
+Applying this full correction instantaneously would introduce abrupt changes in the estimated orientation. Instead, only a small fraction of the correction is applied during each update. Let
 \[
-g^n = 
-\begin{bmatrix}
-	0 \\
-	0 \\
-	-9.81
-\end{bmatrix}
+R_{\mathrm{err}}
+=
+\exp(\phi^\wedge),
 \]
-
-\noindent We transform this vector into the body ($b$) frame to get our theoretical gravity vector $g_t^b$:
+where $\phi \in \mathbb{R}^3$ is the rotation vector corresponding to the orientation error and $(\cdot)^\wedge$ denotes the skew-symmetric matrix operator. A partial correction is then obtained by scaling the rotation vector:
 \[
-g_t^b = R^{nb}_{k} \cdot g^n
+R_{\mathrm{corr}}
+=
+\exp(\beta \phi^\wedge),
 \]
+where $0 < \beta \ll 1$ is a correction gain. For example, choosing $\beta = 0.01$ applies approximately one percent of the estimated orientation error during each update.
 
-\noindent Next, we compute the error vector between the measured gravity vector and the theoretical one. Because these vectors contain magnitude information, we normalize both to unit vectors before computing their cross product:
+Finally, the gyroscope orientation estimate is corrected according to
 \[
-r^b = \frac{g_t^b}{\|g_t^b\|} \times \frac{g_m^b}{\|g_m^b\|} 
+R_{\mathrm{gyro}}^{nb}
+\leftarrow
+R_{\mathrm{corr}}
+R_{\mathrm{gyro}}^{nb}.
 \]
-
-\noindent From the properties of the cross product of two unit vectors, the magnitude of $r^b$ provides the sine of the angle $\theta$ between the measured gravity vector and the theoretical one, while its direction provides the rotation axis. Therefore, assuming the error angle is small, we can state that:
-\[
-\|r^b\| = \sin \theta \approx \theta
-\]
-
-\noindent We can extract the normalized axis of rotation $u^b$ by isolating the direction of the error vector:
-\[
-u^b = \frac{r^b}{\|r^b\|}
-\]
-
-\noindent To convert an arbitrary axis-angle representation into a rotation matrix, we can utilize Rodrigues' rotation formula:
-\[
-R = I + \sin\theta\,[u^b]_\times + (1-\cos\theta)\,[u^b]_\times^2
-\]
-
-\noindent Please note $[u^b]_\times$ is the skew symmetric form of the unit vector $u$.
-
-\vspace{1em}
-\noindent In our specific case, we do not wish to correct for the entire angle $\theta$ at once. We assume that the high-frequency gyroscope data is more accurate in the short term, and we use this gravity correction primarily to apply a small, continuous offset that compensates for long-term drift. Therefore, we only compensate for a fraction of $\theta$. We define this correction gain as $K_g$, where a typical value is $K_g = 0.01$.
-
-\vspace{1em}
-\noindent The actual correction angle we wish to apply is:
-\[
-\alpha = K_g \cdot \theta
-\]
-
-\noindent Assuming $\alpha$ is a small angle, we can use the small-angle approximations $\sin\alpha \approx \alpha$ and $\cos\alpha \approx 1$. Applying these approximations to Rodrigues' formula for the correction angle $\alpha$ and the rotation axis $u^b$ allows us to simplify it to a linear approximation.
-\[
-R_g \approx I + \alpha \cdot [u^b]_\times
-\]
-
-\noindent We can use an identical process to obtain the correction matrix for the yaw direction $R_m$ using the magnetometer. The only difference being that we start with the magnetic north direction $m^n$ and use the reference vector $m^b_m$:
-\[
-m^n = 
-\begin{bmatrix}
-	0 \\
-	1 \\
-	0
-\end{bmatrix}
-\]
-
-\noindent We can now obtain the final orientation by applying the two drift correction terms:
-\[
-	R = R_g \cdot R_m \cdot R_{k+1} 
-\]
+This gradual correction preserves the smooth, high-frequency response of the gyroscope integration while continuously removing long-term drift. Consequently, the estimated orientation remains stable over extended periods without introducing discontinuities or sacrificing responsiveness.
 
 \subsection{Normalization of the Rotation Matrix}
 
@@ -329,7 +299,7 @@ R^{nb} = \begin{bmatrix}
 	r_{11} & r_{12} & r_{13} \\
 	r_{21} & r_{22} & r_{23} \\
 	r_{31} & r_{32} & r_{33}
-\end{bmatrix} = 
+\end{bmatrix} =
 \begin{bmatrix}
 	\cos\theta\cos\psi & \cos\theta\sin\psi & -\sin\theta \\
 	\sin\phi\sin\theta\cos\psi - \cos\phi\sin\psi & \sin\phi\sin\theta\sin\psi + \cos\phi\cos\psi & \sin\phi\cos\theta \\
@@ -362,53 +332,6 @@ The pitch angle is locked to $\theta = -\pi/2$. Setting the roll angle to zero (
 \[
 \psi = -\text{atan2}\left(r_{21}, r_{22}\right)
 \]
-
-\subsection{System Initialization}
-
-Before the AHRS can reliably track orientation using gyroscope integration, an initial orientation matrix $R_0^{bg}$ must be established. When the drone is powered on and stationary on the ground, the initial acceleration measurement corresponds purely to gravity, and the magnetometer measures the static local Earth's magnetic field. We can exploit these physical vector readings to construct a deterministic, orthogonal coordinate system via the Triad method.
-
-A rotation matrix $R^{sd}$ transforms a vector from a source frame $s$ to a destination frame $d$. Conceptually, it is structured such that \textbf{each column represents a unit basis vector of the source frame $s$ expressed in the coordinates of the destination frame $d$.} Because our sensor measurements naturally provide the navigation frame's axes (gravity and magnetic north) expressed in body-frame coordinates, it is most direct to first construct the matrix $R_0^{gb}$ (from navigation $g$ to body $b$). The columns of $R_0^{gb}$ will simply be the navigation frame's basis vectors (East, North, Up) expressed in body-frame coordinates.
-
-\vspace{1em}
-\noindent Let $a_{\text{init}}^b$ and $m_{\text{init}}^b$ be the initial normalized vector measurements of the accelerometer and magnetometer expressed in the body frame:
-\[
-a^b = \frac{a_{\text{init}}^b}{\|a_{\text{init}}^b\|}, \quad m^b = \frac{m_{\text{init}}^b}{\|m_{\text{init}}^b\|}
-\]
-
-\noindent According to the ENU reference frame definitions, the true gravity vector points along the negative $z$-axis ($g$-frame), meaning the Up axis ($z$) points directly opposite to gravity. Crucially, a stationary accelerometer measures \textit{proper acceleration}—the upward reaction force exerted by the ground to oppose gravity. Consequently, the positive body-frame acceleration vector $a^b$ points physically upward, meaning it directly represents the tracking of the navigation frame's Up basis vector ($\mathbf{u}^b$) without requiring negation:
-\[
-\mathbf{u}^b = a^b
-\]
-
-\noindent Next, the raw magnetometer vector $m^b$ cannot be used directly as the North basis vector because it is generally not perfectly orthogonal to the gravity vector due to the magnetic inclination angle (dip angle). To extract a clean East-West lateral axis that is strictly perpendicular to the vertical axis, we compute the cross product of the magnetic vector and the vertical axis. This isolates the navigation frame's East basis vector ($\mathbf{e}^b$) expressed in the body frame:
-\[
-\mathbf{e}^b = \frac{m^b \times \mathbf{u}^b}{\|m^b \times \mathbf{u}^b\|}
-\]
-
-\noindent Finally, to complete the right-handed coordinate system and obtain the true horizontal North basis vector ($\mathbf{n}^b$) expressed in the body frame, we take the cross product of our newly computed Up and East basis vectors:
-\[
-\mathbf{n}^b = \mathbf{u}^b \times \mathbf{e}^b
-\]
-
-\noindent Because $\mathbf{e}^b$, $\mathbf{n}^b$, and $\mathbf{u}^b$ are the mutually orthogonal unit basis vectors of the source frame ($g$) expressed in the destination frame ($b$), we pack them directly into the columns of $R_0^{gb}$:
-\[
-R_0^{gb} = 
-\begin{bmatrix}
-	\mathbf{e}^b & \mathbf{n}^b & \mathbf{u}^b
-\end{bmatrix}
-\]
-
-\noindent To obtain the final required initial orientation matrix $R_0^{bg}$, which defines the transformation from the body frame to the navigation frame, we exploit the orthogonal property of rotation matrices ($R^{-1} = R^T$). Transposing $R_0^{gb}$ yields our final row-stacked matrix:
-\[
-R_0^{bg} = (R_0^{gb})^T = 
-\begin{bmatrix}
-	(\mathbf{e}^b)^T \\
-	(\mathbf{n}^b)^T \\
-	(\mathbf{u}^b)^T
-\end{bmatrix}
-\]
-
-\noindent This matrix maps the initial physical state of the vehicle perfectly onto the navigation frame, establishing a stable baseline for the subsequent integration updates ($R_k^{bg}$).
 
 
 \end{document}
