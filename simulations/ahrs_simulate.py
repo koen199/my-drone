@@ -27,7 +27,7 @@ from typing import Callable
 import matplotlib.pyplot as plt
 import numpy as np
 
-from drone_control_system.ahrs import AHRSFilter, rotation_matrix_to_euler
+from ahrs import AHRSFilter, rotation_matrix_to_euler
 
 # ---------------------------------------------------------------------------
 # Simulation parameters

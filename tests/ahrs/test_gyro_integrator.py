@@ -1,5 +1,5 @@
 import numpy as np
-from drone_control_system.ahrs.gyro_integrator import integrate_gyro
+from simulations.ahrs.gyro_integrator import integrate_gyro
 
 
 def test_integrate_zero_omega():

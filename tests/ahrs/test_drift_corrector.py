@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
-from drone_control_system.ahrs.drift_corrector import (
+from simulations.ahrs.drift_corrector import (
     compute_orientation_error,
     compute_correction,
     apply_drift_correction,
 )
-from drone_control_system.ahrs.math_utils import rodrigues_rotation, rotation_log
+from simulations.ahrs.math_utils import rodrigues_rotation, rotation_log
 
 
 def _is_rotation(R):

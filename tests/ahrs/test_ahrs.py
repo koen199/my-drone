@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from drone_control_system.ahrs import AHRSFilter
+from simulations.ahrs import AHRSFilter
 
 
 GRAVITY = np.array([0.0, 0.0, -9.81])

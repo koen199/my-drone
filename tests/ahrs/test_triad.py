@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from drone_control_system.ahrs.triad import triad_init
+from simulations.ahrs.triad import triad_init
 
 
 def test_triad_output_is_rotation_matrix():

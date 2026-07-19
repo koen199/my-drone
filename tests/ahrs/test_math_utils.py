@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from drone_control_system.ahrs.math_utils import (
+from simulations.ahrs.math_utils import (
     safe_normalize,
     skew_symmetric,
     gram_schmidt,

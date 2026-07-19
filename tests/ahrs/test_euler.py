@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from drone_control_system.ahrs.euler import rotation_matrix_to_euler, GIMBAL_LOCK_THRESHOLD
+from simulations.ahrs.euler import rotation_matrix_to_euler, GIMBAL_LOCK_THRESHOLD
 
 
 def _Rx(a):
