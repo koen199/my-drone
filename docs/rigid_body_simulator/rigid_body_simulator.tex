@@ -16,10 +16,54 @@
 	This document will describe a very simple rigid body simulator we will use to design and develop our drone control system. Too efficiently design the system we will need simulations. In this module we will design a very simple simulator which will solve Newton's equations. In doing so, we can predict under certain approximations how the drone will behave when we control it.
 	
 	\section{Reference system}
-	
-	Same explanation as in the AHRS system (body and world frame of reference). We'll need to make a reference later.
+
+	Two reference frames are used throughout this document (the same frames as in the AHRS documentation):
+	\begin{itemize}
+		\item The \textbf{world frame} ($n$): fixed to the world. It is treated as non-inertial in general, but for the purposes of this simulator Newton's equations are written directly in it.
+		\item The \textbf{body-fixed frame} ($b$): its origin is fixed somewhere on the drone (not necessarily at the center of mass) and its axes rotate with the drone.
+	\end{itemize}
+
+	The center of gravity (CoG) of the body is fixed in the body frame and described by the constant vector $\mathbf{c}^b$, expressed in the $b$ frame relative to the body origin.
+
+	\subsection{Orientation and the rotation matrix}
+
+	The orientation of the body is represented by a unit quaternion $\mathbf{p} = [p_0, p_1, p_2, p_3]^T$ (scalar-first convention), describing the rotation of the body frame relative to the world frame. From the quaternion we can construct the rotation matrix $\mathbf{R}_{nb}$, which transforms body-frame vectors into the world frame:
+	\begin{equation}
+		\mathbf{v}^n = \mathbf{R}_{nb} \, \mathbf{v}^b,
+		\qquad
+		\mathbf{v}^b = \mathbf{R}_{nb}^T \, \mathbf{v}^n
+	\end{equation}
+
+	For a unit quaternion $\mathbf{p} = [p_0, p_1, p_2, p_3]^T$ the rotation matrix is given by:
+	\begin{equation}
+		\mathbf{R}_{nb} =
+		\begin{bmatrix}
+			1 - 2(p_2^2 + p_3^2) & 2(p_1 p_2 - p_0 p_3) & 2(p_1 p_3 + p_0 p_2) \\
+			2(p_1 p_2 + p_0 p_3) & 1 - 2(p_1^2 + p_3^2) & 2(p_2 p_3 - p_0 p_1) \\
+			2(p_1 p_3 - p_0 p_2) & 2(p_2 p_3 + p_0 p_1) & 1 - 2(p_1^2 + p_2^2)
+		\end{bmatrix}
+	\end{equation}
+
+	\subsection{Directions versus points}
+
+	When transforming quantities between frames we must distinguish two kinds of vectors. Throughout this document a location is denoted by $\mathbf{s}$; the symbol $\mathbf{x}$ is reserved for the simulator state vector introduced in Section~\ref{sec:dynamics}.
+	\begin{itemize}
+		\item \textbf{Free vectors} (forces, torques, velocities, angular velocities): only the direction and magnitude matter, so they transform by rotation alone, $\mathbf{v}^n = \mathbf{R}_{nb}\mathbf{v}^b$.
+		\item \textbf{Points} (force application points, sensor positions): these denote a location and additionally require a translation. A body-frame point $\mathbf{s}^b$ is expressed relative to the \emph{body origin}. Since the simulator state stores the world position of the center of mass, $\mathbf{r}$, the corresponding world-frame point is
+		\begin{equation}
+			\mathbf{s}^n = \mathbf{r} + \mathbf{R}_{nb}\left( \mathbf{s}^b - \mathbf{c}^b \right)
+			\label{eq:point-transform}
+		\end{equation}
+		where the CoG offset $\mathbf{c}^b$ accounts for the fact that the body origin and the center of mass do not coincide in general. A world-frame point is simply an absolute position and needs no transformation.
+	\end{itemize}
+
+	Because the state tracks the center of mass while the user describes the geometry (CoG, sensor positions, force application points) relative to the body origin, the initial condition also requires this conversion: given the initial world position of the body origin $\mathbf{r}_{\text{origin}}$ and initial orientation $\mathbf{p}_0$, the initial center of mass position is
+	\begin{equation}
+		\mathbf{r}_0 = \mathbf{r}_{\text{origin}} + \mathbf{R}_{nb}(\mathbf{p}_0)\,\mathbf{c}^b
+	\end{equation}
 	
 	\section{Rigid body dynamics}
+	\label{sec:dynamics}
 	In this section, we discuss the rigid-body dynamics required to solve the equations of motion. Throughout this chapter, all vectors are expressed in the non-inertial world reference frame, denoted by $n$.
 	
 	The objective is to determine the system state, which is defined by the state vector
@@ -67,8 +111,23 @@
 	
 	In the next sections we will discuss how to obtain each element of the state derivative vector. After that we discuss two integration schemes which can be used too obtain the next state.
 
-    
-	
+	\subsection{External forces and torques in arbitrary frames}
+
+	An external load on the body is described either as a pure torque $\boldsymbol{\tau}_i$, or as a force $\mathbf{F}_j$ together with its application point $\mathbf{s}_j$. Both the force vector and its application point may be expressed in \emph{any} of the frames defined above; this is a convenience of the interface, not of the physics. Before the equations of motion are evaluated, everything is brought into the world frame:
+	\begin{itemize}
+		\item force and torque vectors are rotated, $\mathbf{F}_j^n = \mathbf{R}_{nb}\mathbf{F}_j^b$ (and analogously for $\boldsymbol{\tau}_i$),
+		\item application points are transformed as points using Eq.~\eqref{eq:point-transform}.
+	\end{itemize}
+
+	The moment arm of a force about the center of mass is then
+	\begin{equation}
+		\mathbf{r}_j = \mathbf{s}_j^n - \mathbf{r}
+		\label{eq:moment-arm}
+	\end{equation}
+	i.e.\ the world-frame vector from the center of mass to the application point. Note that a force applied exactly at the CoG ($\mathbf{s}_j^b = \mathbf{c}^b$) has $\mathbf{r}_j = \mathbf{0}$ and therefore produces no torque --- this is how, for example, gravity is applied.
+
+	It is important that this transformation into the world frame is performed with the orientation of the state \emph{currently being evaluated}, not with a fixed orientation: a body-fixed force (such as propeller thrust) must rotate together with the body. This distinction matters for the multi-stage integration schemes of Section~\ref{sec:integration}, where the derivative is evaluated at intermediate candidate states. Within a single time step, the set of applied forces itself is held constant (a zero-order hold); only its expression in the world frame changes with the evaluated orientation.
+
 	\subsection{Computing linear acceleration}
 	
 	We start by computing the total force $\mathbf{F}$ (described in the $n$ frame) by summing all the known external forces acting on the body:
@@ -88,7 +147,7 @@
 	\begin{equation}
 		\boldsymbol{\tau} = \sum_{i} \boldsymbol{\tau}_i + \sum_{j} \left( \mathbf{r}_j \times \mathbf{F}_j \right)
 	\end{equation}
-	where $\mathbf{r}_j$ represents the position vector from the body's center of mass to the point of application of the force $\mathbf{F}_j$, and $\times$ denotes the vector cross product.
+	where $\mathbf{r}_j$ is the moment arm of Eq.~\eqref{eq:moment-arm}, the position vector from the body's center of mass to the point of application of the force $\mathbf{F}_j$, and $\times$ denotes the vector cross product. All quantities are assumed to have already been expressed in the world frame as described above.
 	
 	Because the equations of motion are expressed in the world reference frame $n$, the constant body-frame inertia tensor $\mathbf{I}_{\text{body}}$ must be transformed into the world frame at each time step. Using the rotation matrix $\mathbf{R}$ derived from the current orientation quaternion $\mathbf{p}$, the world inertia tensor $\mathbf{I}$ is obtained via the following change of basis:
 	\begin{equation}
@@ -140,7 +199,38 @@ where $p_0$ is the scalar component of the quaternion $\mathbf{p}$, and $\mathbf
 
 By examining the state vector $\mathbf{x}$ and its time derivative $\dot{\mathbf{x}}$, it becomes apparent that determining the linear and angular velocities for the state derivative equation $\dot{\mathbf{x}} = \mathbf{f}(\mathbf{x})$ is straightforward. Rather than requiring dynamic computation from external forces or torques, these velocity terms are already explicitly stored as components within the state vector itself.
 
+\section{Kinematics of an arbitrary body-fixed point}
+\label{sec:point-kinematics}
+
+The state describes the motion of the center of mass, but for developing the control system we need to know what a sensor mounted somewhere on the body would experience --- for instance an IMU that is not located at the CoG. Consider a point $P$ that is fixed in the body frame, and let
+\begin{equation}
+	\boldsymbol{\rho} = \mathbf{s}_P^n - \mathbf{r}
+\end{equation}
+be the world-frame vector from the center of mass to that point, with $\mathbf{s}_P^n$ obtained from the point transform of Eq.~\eqref{eq:point-transform}.
+
+\subsection{Angular velocity at a point}
+
+The angular velocity is a property of the rigid body as a whole: every point of the body rotates with the same $\boldsymbol{\omega}$. The position of the query point therefore does not change the result; it only determines the frame in which the answer is expressed ($\boldsymbol{\omega}$ in the world frame, or $\mathbf{R}_{nb}^T\boldsymbol{\omega}$ in the body frame).
+
+\subsection{Acceleration at a point}
+
+For a point rigidly attached to the body, standard rigid-body kinematics gives the acceleration
+\begin{equation}
+	\mathbf{a}_P = \mathbf{a} + \boldsymbol{\alpha} \times \boldsymbol{\rho} + \boldsymbol{\omega} \times \left( \boldsymbol{\omega} \times \boldsymbol{\rho} \right)
+	\label{eq:point-acceleration}
+\end{equation}
+where all vectors are expressed in the world frame:
+\begin{itemize}
+	\item $\mathbf{a}$ is the acceleration of the center of mass ($\mathbf{a} = \mathbf{F}/m$),
+	\item $\boldsymbol{\alpha} \times \boldsymbol{\rho}$ is the tangential (Euler) acceleration caused by the angular acceleration,
+	\item $\boldsymbol{\omega} \times (\boldsymbol{\omega} \times \boldsymbol{\rho})$ is the centripetal acceleration caused by the rotation itself.
+\end{itemize}
+Because $P$ is fixed in the body there is no relative velocity of the point with respect to the body, and hence no Coriolis ($2\boldsymbol{\omega}\times\mathbf{v}_{\text{rel}}$) term. The values of $\mathbf{a}$ and $\boldsymbol{\alpha}$ are obtained by evaluating the state derivative with the currently applied forces and torques.
+
+Like the applied forces, the query point may be given in any frame, and the resulting acceleration is returned expressed in that same frame. Note that Eq.~\eqref{eq:point-acceleration} is the \emph{kinematic} (coordinate) acceleration of the point; an actual IMU measures specific force, which additionally involves subtracting gravity. That belongs to a separate sensor model built on top of this simulator.
+
 \section{Integration Schemes}
+\label{sec:integration}
 In this section, we describe the two integration schemes implemented in our simulator: the Forward Euler method and the fourth-order Runge-Kutta (RK4) method.
 
 \subsection{Forward Euler}
@@ -167,6 +257,22 @@ where the intermediate slopes $\mathbf{k}_i$ are evaluated sequentially:
 RK4 systematically samples the slope four separate times across the time step. By doing this clever averaging the simulation ends up being more accurate and stable.
 
 Naturally, this increased accuracy comes at a higher computational cost. While Forward Euler requires only a single derivative evaluation per time step, RK4 requires four, making each step four times more expensive to compute.
+
+\section{Numerical implementation notes}
+
+A few consequences of the mathematics above shape how the simulator is structured.
+
+\subsection{The derivative as a pure function of the state}
+
+Both integration schemes are written in terms of a derivative function $f(t, \mathbf{x})$ that can be evaluated at \emph{any} candidate state, not only at the currently stored one. This is essential for RK4: the stages $\mathbf{k}_2$--$\mathbf{k}_4$ evaluate the dynamics at intermediate states such as $\mathbf{x}_n + \frac{\Delta t}{2}\mathbf{k}_1$ that are never adopted as the actual state of the system. The rigid body therefore computes its state derivative from the state vector it is handed --- in particular, body-frame forces are rotated into the world frame using the \emph{candidate} orientation quaternion contained in that state --- and its stored state is only overwritten once per step with the final result. This separation also keeps the integrators generic: any system that can express itself as a state vector with a derivative function can be registered with a solver and advanced alongside the rigid body.
+
+\subsection{Quaternion normalization}
+
+As noted in the discussion of the orientation derivative, numerical integration does not preserve the unit length of the quaternion, so $\mathbf{p}$ is re-normalized when the final state of a step is stored. In addition, the intermediate RK4 candidate states contain quaternions that are slightly non-unit (they are sums of a unit quaternion and scaled derivative terms). Whenever a rotation matrix is constructed during a derivative evaluation, the quaternion is therefore normalized first, so that $\mathbf{R}_{nb}$ is always a proper rotation matrix even at intermediate stages.
+
+\subsection{Force application over a step}
+
+The applied forces and torques are treated as constant over a time step (a zero-order hold): all derivative evaluations within one step see the same set of applied loads. In a typical control loop the forces are updated once per step, before the integrator advances the state. Body-frame loads are nevertheless re-expressed in the world frame at every derivative evaluation, using the orientation of the state being evaluated, as discussed above.
 
 	
 \end{document}
