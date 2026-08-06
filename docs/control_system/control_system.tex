@@ -2,6 +2,7 @@
 
 \usepackage{amsmath, amssymb, bm}
 \usepackage[a4paper, margin=1in]{geometry}
+\usepackage{graphicx} % 1. Load the package
 
 \title{Drone control system}
 \author{}
@@ -22,44 +23,175 @@
 		\item Motor 2,4 spin clockwise
 	\end{itemize}
 	
-	\section{Mixer}
-	The mixer is in charge of taking the torque vector $T$ and required vertical force component $F_z$ and producing the required thrust vectors $F_{t1}$, $F_{t2}$, $F_{t3}$ and $F_{t4}$.
+
+	\section{Altitude Controller}
+	The altitude controller employs a proportional (P) control scheme to map a vertical position error to a target vertical velocity. Receiving the estimated altitude from the state estimator, the controller computes the target vertical speed $v_{z,\mathrm{sp}}$ according to:
+	\begin{equation}
+		v_{z,\mathrm{sp}}(t) = K_p \left( p_{z,\mathrm{sp}}(t) - p_{z,\mathrm{m}}(t) \right)
+	\end{equation}
+	where $p_{z,\mathrm{sp}}$ is the setpoint altitude, $p_{z,\mathrm{m}}$ is the estimated vertical position, and $K_p$ is the proportional position gain.
 	
-	In a subsequent step we can translate these thrust vectors to rpm setpoints because we know the relation between thrust and speed is:
+	The output $v_{z,\mathrm{sp}}(t)$ serves directly as the setpoint for the inner-loop vertical speed controller derived in Section 1.2. To ensure flight safety and prevent actuator saturation during large position steps, the commanded speed is typically constrained by maximum climb and sink rate limits:
+	\begin{equation}
+		v_{z,\mathrm{sp,sat}}(t) = \mathrm{sat}_{\left[v_{z,\mathrm{min}}, v_{z,\mathrm{max}}\right]} \left( v_{z,\mathrm{sp}}(t) \right)
+	\end{equation}
+	
+	By cascading this outer-loop position controller into the inner-loop velocity controller, the overall system achieves zero steady-state error to step position commands via the velocity loop's integral action.
+	
+	\section{Attitude controller}
+	We represent the attitude of the drone using the 3 euler angles roll, pitch and yaw ($\phi, \theta, \psi$).
+	Too control the attitude we need to map the desired attitude and actual attitude to a vector $\bm{e}$ representing a desired 3D rotation speed which will decrease the error.
+	
+	We start by converting the roll, pitch and yaw angles to rotation matrices ($(\phi, \theta, \psi)\rightarrow \mathbf{R}$). This can be done by following operation:
+	\begin{equation*}
+		\mathbf{R} = \mathbf{R}_z \cdot \mathbf{R}_y \cdot \mathbf{R}_x 
+	\end{equation*}
+	\begin{equation*}
+		\mathbf{R}_x(\phi) = \begin{bmatrix}
+			1 & 0 & 0 \\
+			0 & \cos\phi & -\sin\phi \\
+			0 & \sin\phi & \cos\phi
+		\end{bmatrix} \quad
+		\mathbf{R}_y(\theta) = \begin{bmatrix}
+			\cos\theta & 0 & \sin\theta \\
+			0 & 1 & 0 \\
+			-\sin\theta & 0 & \cos\theta
+		\end{bmatrix} \quad
+		\mathbf{R}_z(\psi) = \begin{bmatrix}
+			\cos\psi & -\sin\psi & 0 \\
+			\sin\psi & \cos\psi & 0 \\
+			0 & 0 & 1
+		\end{bmatrix}
+	\end{equation*}
+	The matrix $\mathbf{R}$ transforms coordinates from the body frame $b$ to the world frame $n$.
+	
+	If we do the above for measured and desired attitude we obtain respectively $\mathbf{R_m}$ and $\mathbf{R_d}$. We can now obtain the attitude error:
 	\[
-	F_t = k_{t}\cdot\omega^2
+	\mathbf{R}_d \cdot \mathbf{R}_m^T = \mathbf{R}_e
+	\] 
+	The matrix $\mathbf{R}_e$ represents the orientation correction we need to do since:
+	\[
+	\mathbf{R}_d \cdot (\mathbf{R}_m^T \cdot \mathbf{R}_e^T) = \mathbf{I}  
+	\] 
+	\[
+	\mathbf{R}_d \cdot (\mathbf{R}_m \cdot \mathbf{R}_e)^T = \mathbf{I}  
 	\]
-	Where $k_{t}$ is a property of the propeller.
 	
-	Determining $T_x$ and $T_y$ is straight forward:
+	
+	\section{Rate controller}
+	
+	The rate controller does two things:
+	\begin{itemize}
+		\item Converts a desired rotation speed $\bm{\omega}_{\mathrm{sp}}$ into a torque setpoint $\mathbf{T}$
+		\item Converts a desired vertical speed $v_z$ into a verical force setpoint $F_z$
+	\end{itemize}
+	
+	
+	\subsection{Rotational Speed Controller}
+	
+	We employ a proportional-integral-derivative (PID) control scheme operating on the body-rate error vector:
+	\begin{equation}
+		\mathbf{e}(t) = \bm{\omega}_{\mathrm{sp}}(t) - \bm{\omega}_{\mathrm{m}}(t)
+	\end{equation}
+	where $\bm{\omega}_{\mathrm{sp}}$ is the setpoint angular velocity and $\bm{\omega}_{\mathrm{m}}$ is the measured angular velocity.
+	
+	To make the gain values intuitive, we design the controller such that the proportional action corresponds directly to a desired angular acceleration per unit error:
+	\begin{equation}
+		\dot{\bm{\omega}}_{\mathrm{des}} = \mathbf{K}_p \mathbf{e}(t)
+	\end{equation}
+	The gain matrix $\mathbf{K}_p \in \mathbb{R}^{3 \times 3}$ is structured with the individual axis gains along the diagonal while off-diagonal elements are zero to decouple the rotational dynamics:
+	\begin{equation}
+		\mathbf{K}_p = 
+		\begin{bmatrix}
+			K_{p,xx} & 0 & 0 \\
+			0 & K_{p,yy} & 0 \\
+			0 & 0 & K_{p,zz}
+		\end{bmatrix}
+	\end{equation}
+	For instance, if $K_{p,xx} = 1\text{ s}^{-1}$ and the roll error is $1\text{ rad/s}$, the controller commands a roll angular acceleration of $1\text{ rad/s}^2$.
+	
+	From Euler's rotational equations of motion (ignoring gyroscopic and cross-coupling terms for control gain allocation), the required torque vector $\bm{T}$ relates to angular acceleration via the moment of inertia matrix $\mathbf{I}$:
+	\begin{equation}
+		\bm{T} = \mathbf{I} \dot{\bm{\omega}}
+	\end{equation}
+	
+	Premultiplying the target acceleration by $\mathbf{I}$ maps the control law to physical torque commands. Extending this to full PID control yields the control law $\bm{u}(t) \equiv \bm{T}(t)$:
+	\begin{equation}
+		\bm{u}(t) = \mathbf{I} \mathbf{K}_p \mathbf{e}(t) + \mathbf{I} \mathbf{K}_i \int_0^t \mathbf{e}(\tau) \, d\tau + \mathbf{I} \mathbf{K}_d \frac{d\mathbf{e}(t)}{dt}
+	\end{equation}
+	where $\mathbf{K}_p, \mathbf{K}_i, \mathbf{K}_d \in \mathbb{R}^{3 \times 3}$ are diagonal gain matrices scaling the desired proportional, integral, and derivative angular accelerations.
+	
+	\subsection{Vertical Speed Controller}
+	
+	The vertical speed controller operates analogously to the rotational speed controller, though the body rate vector is replaced by a scalar vertical velocity error:
+	\begin{equation}
+		e(t) = v_{z,\mathrm{sp}}(t) - v_{z,\mathrm{m}}(t)
+	\end{equation}
+	where $v_{z,\mathrm{sp}}$ is the target vertical speed and $v_{z,\mathrm{m}}$ is the measured vertical speed.
+	
+	Following the same design philosophy of physical gain intuitive selection, the controller gains are formulated to directly command a desired vertical acceleration:
+	\begin{equation}
+		\dot{v}_{z,\mathrm{des}} = K_{p,z} e(t)
+	\end{equation}
+	This structure allows the controller gains to be interpreted in physical units:
+	\begin{itemize}
+		\item \textbf{Proportional action ($K_{p,z}$):} A velocity error of $1\text{ m/s}$ commands an acceleration of $K_{p,z}\text{ m/s}^2$.
+		\item \textbf{Integral action ($K_{i,z}$):} A persistent error of $1\text{ m/s}$ over $1\text{ s}$ commands an additional acceleration of $K_{i,z}\text{ m/s}^2$.
+		\item \textbf{Derivative action ($K_{d,z}$):} A velocity error changing at a rate of $1\text{ m/s}^2$ commands an immediate acceleration of $K_{d,z}\text{ m/s}^2$.
+	\end{itemize}
+	
+	Using Newton's second law ($F = m a$), the commanded target acceleration $\dot{v}_{z,\mathrm{des}}$ maps to a physical vertical force by scaling by the vehicle mass $m$. Extending this to the complete PID formulation yields:
+	\begin{equation}
+		F_z(t) = m K_{p,z} e(t) + m K_{i,z} \int_0^t e(\tau) \, d\tau + m K_{d,z} \frac{d e(t)}{d t}
+	\end{equation}
+	
+	To improve initial responsiveness, the integral term can be pre-loaded while the drone is still grounded prior to takeoff. Initializing the integrator with a fraction of the vehicle's hovering force—typically around $0.8 \, m g$—prevents significant initial altitude dip or response lag by pre-allocating the baseline force required to counteract gravity.
+	\section{Mixer}
+	The mixer maps the desired control inputs—the torque vector $\mathbf{T} = [T_x, T_y, T_z]^\top$ and the required vertical force component $F_z$—to the individual motor thrust forces $F_{t1}, F_{t2}, F_{t3},$ and $F_{t4}$.
+	
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=0.7\textwidth]{mixer_image_adapted.png}
+		\caption{A descriptive caption for your image.}
+		\label{fig:my_image}
+	\end{figure}
+	
+	Once the thrust vector $\mathbf{f} = [F_{t1}, F_{t2}, F_{t3}, F_{t4}]^\top$ is determined, each thrust force can be converted into an RPM setpoint using the aerodynamic relationship:
+	\[
+	F_t = k_{\text{t}} \omega^2
+	\]
+	where $k_{\text{t}}$ represents the thrust coefficient of the propeller and $\omega$ is the rotational speed.
+	
+	Assuming a standard quadrotor frame geometry, the roll and pitch torques ($T_x$ and $T_y$) are derived from the individual thrust forces and motor moment arms ($l_1$ and $l_2$):
 	\begin{align*}
-	T_x = F_{t1}\cdot l_1 + F_{t4}\cdot l_1 - F_{t2}\cdot l_1 - F_{t3}\cdot l_1 \\
-	T_y = F_{t3}\cdot l_2 + F_{t4}\cdot l_2 - F_{t1}\cdot l_2 - F_{t2}\cdot l_2 
+		T_x &= (F_{t4} + F_{t3} - F_{t1} - F_{t2}) l_1 \\
+		T_y &= (F_{t2} + F_{t3} - F_{t1} - F_{t4}) l_2 
 	\end{align*}
 	
-	Too determine $T_z$ we need too consider that when the propeller spins due to rotation resistance a pure reaction torque is generated opposing the spinning direction. The reaction torque has following relation to the rpm:
+	To determine the yaw torque $T_z$, we must account for the reaction torque $T_r$ generated by propeller which acts on the frame in the same direction as the spinning direction:
 	\[
-		T_d = k_d\cdot\omega^2
+	T_r = k_{\text{d}} \omega^2
 	\]
-	We can define:
+	Defining the constant ratio of drag-to-thrust coefficients as:
 	\[
-		c = \frac{T_d}{F_t} = \frac{k_d}{k_t}
+	c = \frac{T_r}{F_t} = \frac{k_{\text{d}}}{k_{\text{t}}}
 	\]
-	We can then write the torque $T_z$ in relation to the propeller forces:
+	the total yaw torque $T_z$ can be expressed directly in terms of individual thrust forces:
 	\[
-	T_z = c\cdot(F_{t1} +  F_{t3} - F_{t2} - F_{t4})
+	T_z = c (F_{t1} + F_{t3} - F_{t2} - F_{t4})
 	\]
-	We know the total thrust $F$ is simply the addition of all the propeller forces:
+	
+	The total thrust magnitude $F$ is the scalar sum of all propeller thrusts:
 	\[
 	F = F_{t1} + F_{t2} + F_{t3} + F_{t4}
 	\]
-	However since our higher level controllers are outputting vertical force we need the relation between thrust and vertical force:
+	Since higher-level controllers output a required vertical force $F_z$, total required thrust $F$ is related to $F_z$ via the current attitude:
 	\[
-	F_z = F\cdot\cos(\phi)\cdot\cos(\theta)
-	\] 
-	Where $\phi$ is the roll angle and $\theta$ is the pitch angle.
+	F = \frac{F_z}{\cos(\phi) \cos(\theta)}
+	\]
+	where $\phi$ is the roll angle and $\theta$ is the pitch angle.
 	
-	Now we can arrange all equations into a matrix:
+	Combining these relations yields the linear system:
 	\[
 	\begin{bmatrix}
 		F \\
@@ -72,7 +204,7 @@
 		l_1 & -l_1 & -l_1 & l_1 \\
 		-l_2 & -l_2 & l_2 & l_2 \\
 		c & -c & c & -c
-	\end{bmatrix}\cdot
+	\end{bmatrix}
 	\begin{bmatrix}
 		F_{t1} \\
 		F_{t2} \\
@@ -81,12 +213,13 @@
 	\end{bmatrix}
 	\]
 	
-	Or written differently:
+	In compact matrix form, this is written as:
 	\[
-	u = A \cdot f
+	\mathbf{u} = \mathbf{A} \mathbf{f}
 	\]
-	We now have a simple linear system of equations and we can find the required propeller forces by:
+	where $\mathbf{u} = [F, T_x, T_y, T_z]^\top$ is the total control effort vector and $\mathbf{A}$ is the mixer allocation matrix. Provided $\mathbf{A}$ is invertible, the required individual motor thrusts are computed by solving the system:
 	\[
-	f = A^{-1}\cdot u 
+	\mathbf{f} = \mathbf{A}^{-1} \mathbf{u}
 	\]
+	
 \end{document}
