@@ -77,6 +77,21 @@
 	\mathbf{R}_d \cdot (\mathbf{R}_m \cdot \mathbf{R}_e)^T = \mathbf{I}  
 	\]
 	
+	Too be able too correct the drone's orientation we will convert the rotation matrix $\mathbf{R}_e$ into an axis-angle representation. The angle can be computed using the below equation:
+	\[
+	\theta = \arccos\left(\frac{\text{tr}(\mathbf{R}_e) - 1}{2}\right) = \arccos\left(\frac{R_{11} + R_{22} + R_{33} - 1}{2}\right)
+	\]
+	The axis can be found using:
+	\[
+	\mathbf{u} = \frac{1}{2\sin\theta} \begin{bmatrix} R_{32} - R_{23} \\ R_{13} - R_{31} \\ R_{21} - R_{12} \end{bmatrix}
+	\]
+	
+	The actual controller using a proportional (P) control scheme to map an attitude error to a rotation speed setpoint:
+	\[
+	\mathbf{\omega_{sp}} = K_p \cdot \theta \cdot \mathbf{u}
+	\]
+	
+	
 	
 	\section{Rate controller}
 	
