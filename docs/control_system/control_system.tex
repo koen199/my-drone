@@ -38,60 +38,73 @@
 	
 	By cascading this outer-loop position controller into the inner-loop velocity controller, the overall system achieves zero steady-state error to step position commands via the velocity loop's integral action.
 	
-	\section{Attitude controller}
-	We represent the attitude of the drone using the 3 euler angles roll, pitch and yaw ($\phi, \theta, \psi$).
-	Too control the attitude we need to map the desired attitude and actual attitude to a vector $\bm{e}$ representing a desired 3D rotation speed which will decrease the error.
+
+	\section{Attitude Controller}
 	
-	We start by converting the roll, pitch and yaw angles to rotation matrices ($(\phi, \theta, \psi)\rightarrow \mathbf{R}$). This can be done by following operation:
+	We represent the attitude of the drone using the three Euler angles: roll, pitch, and yaw ($\phi, \theta, \psi$).
+	To control the attitude, we need to map the desired and actual attitudes to a vector $\bm{e}$ representing a desired 3D angular velocity vector that reduces the orientation error.
+	
+	We start by converting the roll, pitch, and yaw angles to a rotation matrix ($\left(\phi, \theta, \psi\right) \rightarrow \mathbf{R}$). This is achieved via the standard Z-Y-X rotation sequence:
 	\begin{equation*}
-		\mathbf{R} = \mathbf{R}_z \cdot \mathbf{R}_y \cdot \mathbf{R}_x 
+		\mathbf{R} = \mathbf{R}_z(\psi) \cdot \mathbf{R}_y(\theta) \cdot \mathbf{R}_x(\phi)
 	\end{equation*}
+	where the elementary rotation matrices are defined as:
 	\begin{equation*}
 		\mathbf{R}_x(\phi) = \begin{bmatrix}
 			1 & 0 & 0 \\
 			0 & \cos\phi & -\sin\phi \\
 			0 & \sin\phi & \cos\phi
-		\end{bmatrix} \quad
+		\end{bmatrix}, \quad
 		\mathbf{R}_y(\theta) = \begin{bmatrix}
 			\cos\theta & 0 & \sin\theta \\
 			0 & 1 & 0 \\
 			-\sin\theta & 0 & \cos\theta
-		\end{bmatrix} \quad
+		\end{bmatrix}, \quad
 		\mathbf{R}_z(\psi) = \begin{bmatrix}
 			\cos\psi & -\sin\psi & 0 \\
 			\sin\psi & \cos\psi & 0 \\
 			0 & 0 & 1
 		\end{bmatrix}
 	\end{equation*}
-	The matrix $\mathbf{R}$ transforms coordinates from the body frame $b$ to the world frame $n$.
+	The resulting matrix $\mathbf{R}$ transforms coordinates from the body frame $b$ to the world frame $n$.
 	
-	If we do the above for measured and desired attitude we obtain respectively $\mathbf{R_m}$ and $\mathbf{R_d}$. We can now obtain the attitude error:
-	\[
-	\mathbf{R}_d \cdot \mathbf{R}_m^T = \mathbf{R}_e
-	\] 
-	The matrix $\mathbf{R}_e$ represents the orientation correction we need to do since:
-	\[
-	\mathbf{R}_d \cdot (\mathbf{R}_m^T \cdot \mathbf{R}_e^T) = \mathbf{I}  
-	\] 
-	\[
-	\mathbf{R}_d \cdot (\mathbf{R}_m \cdot \mathbf{R}_e)^T = \mathbf{I}  
-	\]
+	Applying this mapping to the measured and desired attitudes yields $\mathbf{R}_m$ and $\mathbf{R}_d$, respectively. The relative rotation error matrix $\mathbf{R}_e$ (expressed in the body frame) is given by:
+	\begin{equation*}
+		\mathbf{R}_e = \mathbf{R}_m^T \mathbf{R}_d
+	\end{equation*}
+	The matrix $\mathbf{R}_e$ represents the rotation needed to align the measured body frame with the desired body frame, satisfying $\mathbf{R}_m \mathbf{R}_e = \mathbf{R}_d$.
 	
-	Too be able too correct the drone's orientation we will convert the rotation matrix $\mathbf{R}_e$ into an axis-angle representation. The angle can be computed using the below equation:
-	\[
-	\theta = \arccos\left(\frac{\text{tr}(\mathbf{R}_e) - 1}{2}\right) = \arccos\left(\frac{R_{11} + R_{22} + R_{33} - 1}{2}\right)
-	\]
-	The axis can be found using:
-	\[
-	\mathbf{u} = \frac{1}{2\sin\theta} \begin{bmatrix} R_{32} - R_{23} \\ R_{13} - R_{31} \\ R_{21} - R_{12} \end{bmatrix}
-	\]
+	To compute the correction, we convert $\mathbf{R}_e$ into an axis-angle representation $(\mathbf{u}, \theta)$. The magnitude of the rotation angle $\theta$ is given by:
+	\begin{equation*}
+		\theta = \arccos\left(\frac{\text{tr}(\mathbf{R}_e) - 1}{2}\right) = \arccos\left(\frac{R_{e,11} + R_{e,22} + R_{e,33} - 1}{2}\right)
+	\end{equation*}
+	The unit axis of rotation $\mathbf{u}$ is calculated as:
+	\begin{equation*}
+		\mathbf{u} = \frac{1}{2\sin\theta} \begin{bmatrix} R_{e,32} - R_{e,23} \\ R_{e,13} - R_{e,31} \\ R_{e,21} - R_{e,12} \end{bmatrix}
+	\end{equation*}
 	
-	The actual controller using a proportional (P) control scheme to map an attitude error to a rotation speed setpoint:
-	\[
-	\mathbf{\omega_{sp}} = K_p \cdot \theta \cdot \mathbf{u}
-	\]
+	Finally, the controller uses a proportional (P) control scheme to map the orientation error vector to an angular velocity setpoint $\bm{\omega}_{\text{sp}}$:
+	\begin{equation*}
+		\bm{\omega}_{\text{sp}} = K_p \cdot \theta \cdot \mathbf{u}
+	\end{equation*}
 	
+	The formulation above introduces a numerical singularity as the attitude error approaches zero ($\theta \to 0$), caused by the division by $2\sin\theta$ when computing $\mathbf{u}$. To avoid division-by-zero errors and eliminate computationally expensive trigonometric operations, we adopt a geometric error representation directly on $SO(3)$.
 	
+	Using Rodrigues' rotation formula, the antisymmetric component of the error matrix $\mathbf{R}_e$ isolates the rotation axis $\mathbf{u}$ scaled by $\sin\theta$:
+	\begin{equation*}
+		\mathbf{R}_e - \mathbf{R}_e^T = 2\sin\theta \, [\mathbf{u}]_\times
+	\end{equation*}
+	where $[\mathbf{u}]_\times$ denotes the skew-symmetric matrix representation of $\mathbf{u}$. Applying the unskew operator $(\cdot)^\vee$ to extract the 3D vector components, we define the geometric orientation error vector $\mathbf{e}_R$:
+	\begin{equation*}
+		\mathbf{e}_R = \frac{1}{2} (\mathbf{R}_e - \mathbf{R}_e^T)^\vee = \frac{1}{2} \begin{bmatrix} R_{e,32} - R_{e,23} \\ R_{e,13} - R_{e,31} \\ R_{e,21} - R_{e,12} \end{bmatrix} = \sin\theta \cdot \mathbf{u}
+	\end{equation*}
+	
+	For small angular errors ($\theta \to 0$), $\sin\theta \approx \theta$, making $\mathbf{e}_R$ first-order equivalent to $\theta \cdot \mathbf{u}$. Replacing $\theta \mathbf{u}$ with $\mathbf{e}_R$ yields the updated angular velocity setpoint:
+	\begin{equation*}
+		\bm{\omega}_{\text{sp}} = K_p \cdot \mathbf{e}_R
+	\end{equation*}
+	
+	This formulation requires no divisions or trigonometric evaluations ($\arccos$, $\sin$), guaranteeing numerical stability across all operational states including $\theta = 0$.
 	
 	\section{Rate controller}
 	
