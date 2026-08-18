@@ -1,0 +1,195 @@
+\documentclass{article}
+
+\usepackage{amsmath, amssymb, bm}
+\usepackage[a4paper, margin=1in]{geometry}
+
+\title{State estimator}
+\author{}
+\date{}
+
+\begin{document}
+	
+	\maketitle
+	\section{Introduction}
+	This document outlines the state estimator required for autonomous drone control. The primary objective is to estimate the state vector:
+	
+	\[
+	\mathbf{x} =
+	\begin{bmatrix}
+		\mathbf{p} \\
+		\mathbf{v} \\
+		\mathbf{q} \\
+		\mathbf{b}_g \\
+		\mathbf{b}_a
+	\end{bmatrix}
+	\]
+	
+	The individual components of the state vector are defined as follows:
+	
+	\begin{itemize}
+		\item $\mathbf{p} = [p_x, p_y, p_z]^\top$ is the position of the drone expressed in the world frame.
+		
+		\item $\mathbf{v} = [v_x, v_y, v_z]^\top$ is the linear velocity of the drone expressed in the world frame.
+		
+		\item $\mathbf{q} = [q_w, q_x, q_y, q_z]^\top$ is the unit quaternion describing the rotation from the drone body frame to the world frame, satisfying
+		\[
+		\|\mathbf{q}\| = 1.
+		\]
+		
+		\item $\mathbf{b}_g = [b_{gx}, b_{gy}, b_{gz}]^\top$ is the gyroscope bias, representing a slowly varying offset in the measured angular velocity.
+		
+		\item $\mathbf{b}_a = [b_{ax}, b_{ay}, b_{az}]^\top$ is the accelerometer bias, representing a slowly varying offset in the measured specific force.
+	\end{itemize}
+	
+	Thus, the nominal state vector consists of 16 elements ($3 + 3 + 4 + 3 + 3$).
+	
+	To estimate this state, we employ an Error-State Extended Kalman Filter (ES-EKF). The remainder of this document is organized as follows: we first lay out the theoretical foundation of the standard Kalman filter, extend it to the error-state formulation, and finally present the practical implementation details for our drone state estimator.
+	
+	\section{Standard Kalman Filter}
+	
+	The fundamental concept underlying the standard Kalman filter as a state estimator relies on two core steps:
+	\begin{itemize}
+		\item \textbf{Prediction:} Projecting the future state using the current state estimate and control inputs via a dynamic model.
+		\item \textbf{Correction:} Fusing this predicted state with noisy sensor measurements.
+	\end{itemize}
+	A key strength of the Kalman filter is its ability to stochastically model the uncertainties associated with both the state propagation and the sensor readings. By evaluating these error covariances, the filter dynamically determines the optimal weighting—balancing model predictions against physical measurements to yield the best estimate.
+	
+	\subsection{Prediction step}
+	Assuming a discrete-time linear system, the state propagation step predicts the state at time step $k+1$ given the current state ($\mathbf{x_k}$) and some input ($\mathbf{u_k}$) at time step $k$:
+
+	The \textbf{true state} evolves according to the physical dynamics subject to unobservable process noise $\mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$:
+	\begin{equation}
+	\mathbf{x}_{k+1} = \mathbf{F}_k \mathbf{x}_k + \mathbf{B}_k \mathbf{u}_k + \mathbf{w}_k
+	\label{eq:true_state_prop}
+	\end{equation}
+	
+	Because process noise cannot be known in practice, the \textbf{predicted state estimate} is propagated by taking the conditional expectation ($\mathbb{E}[\mathbf{w}_k] = \mathbf{0}$):
+	\begin{equation}
+	\hat{\mathbf{x}}_{k+1} = \mathbf{F}_k \hat{\mathbf{x}}_{k} + \mathbf{B}_k \mathbf{u}_k
+	\label{eq:estimated_state_prop}
+	\end{equation}
+	
+	Here, $\mathbf{F}_k$ denotes the state transition matrix, $\mathbf{B}_k$ is the control-input matrix, and $\mathbf{u}_k$ is the control vector at time step $k$.
+	
+	Several key observations follow from this formulation:
+	\begin{itemize}
+		\item We never have access to the true state $\mathbf{x}_k$; instead, we maintain an estimate, denoted by $\hat{\mathbf{x}}_k$.
+		\item Rather than treating state and noise variables as deterministic vectors with scalar elements, we model them as \textbf{random vectors} whose elements are governed by probability distributions.
+	\end{itemize}
+	
+	In the scalar case, a univariate probability distribution is characterized by its variance $\sigma^2$:
+	\[
+	\sigma^2 = \text{Var}(X) = \mathbb{E}\left[(X - \mu)^2\right]
+	\]
+	where $\mu = \mathbb{E}[X]$ is the mean (expected value) of the random variable $X$. 
+	
+	There is also the concept of covariance, which describes how two random variables vary together. For two random variables $X$ and $Y$, the covariance is defined as:
+	\[
+	\operatorname{Cov}(X,Y) = \mathbb{E}\left[(X-\mathbb{E}[X])(Y-\mathbb{E}[Y])\right].
+	\]
+	
+	For example, suppose we independently sample values from two distributions $X$ and $Y$. If a sample from $X$ is larger than its mean, and this tends to coincide with a sample from $Y$ that is also larger than its mean, the two variables have positive covariance. Conversely, if a value of $X$ above its mean tends to coincide with a value of $Y$ below its mean, they have negative covariance. A covariance of zero means that there is no linear relationship between the two variables.
+	
+	Extending this concept to the Kalman filter, we are interested in the uncertainty of our state estimate. We define the estimation error as the difference between the true state and its estimate:
+	\[
+	\mathbf{e} = \mathbf{x} - \hat{\mathbf{x}}.
+	\]
+	
+	The Kalman filter represents this error as a random variable with a probability distribution. We are particularly interested in its mean and covariance. Assuming the error has zero mean,
+	\[
+	\mathbb{E}[\mathbf{e}] = \mathbf{0},
+	\]
+	the covariance of the estimation error is defined as:
+	\[
+	\mathbf{P} = \mathbb{E}\left[\mathbf{e}\mathbf{e}^\top\right].
+	\]
+	
+	Substituting the definition of the error gives:
+	\[
+	\boxed{
+		\mathbf{P} = \mathbb{E}\left[(\mathbf{x}-\hat{\mathbf{x}})(\mathbf{x}-\hat{\mathbf{x}})^\top\right]
+	}
+	\]
+	
+	The outer product $\mathbf{e}\mathbf{e}^\top$ produces a matrix containing the variance of every state on the main diagonal and the covariance between every pair of states on the off-diagonals:
+	\[
+	\mathbf{P} = 
+	\begin{bmatrix}
+		\mathbb{E}[e_1^2] & \mathbb{E}[e_1 e_2] & \cdots & \mathbb{E}[e_1 e_n] \\
+		\mathbb{E}[e_2 e_1] & \mathbb{E}[e_2^2] & \cdots & \mathbb{E}[e_2 e_n] \\
+		\vdots & \vdots & \ddots & \vdots \\
+		\mathbb{E}[e_n e_1] & \mathbb{E}[e_n e_2] & \cdots & \mathbb{E}[e_n^2]
+	\end{bmatrix}.
+	\]
+	
+	Therefore,
+	\[
+	P_{ii} = \operatorname{Var}(e_i)
+	\]
+	represents the variance of the error in state $i$, while
+	\[
+	P_{ij} = \operatorname{Cov}(e_i, e_j)
+	\]
+	represents the covariance between the errors of states $i$ and $j$.
+	
+	Thus, the covariance matrix $\mathbf{P}$ provides a description of the uncertainty of the state estimate: it tells the Kalman filter not only how uncertain each individual state is, but also how the uncertainties of different states are related to one another.
+	
+	Now that we know what the covariance matrix is we will discuss what happens with the covariance matrix when we predict the next step:
+	\[
+		\mathbf{e}_{k+1} = \mathbf{x}_{k+1}  - \hat{\mathbf{x}}_{k}
+	\]
+	
+	Substitution of equations \ref{eq:true_state_prop} and \ref{eq:estimated_state_prop} yields the dynamic propagation of the state error vector:
+	\[
+		\mathbf{e}_{k+1} = (\mathbf{F}_k \mathbf{x}_k + \mathbf{B}_k \mathbf{u}_k + \mathbf{w}_k) - (\mathbf{F}_k \hat{\mathbf{x}}_k + \mathbf{B}_k \mathbf{u}_k) = \mathbf{F}_k (\mathbf{x}_k - \hat{\mathbf{x}}_k) + \mathbf{w}_k = \mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k
+	\]
+	
+	By definition, the predicted error covariance matrix $\mathbf{P}_{k+1}$ is the expected value of the outer product of the prior error vector $\mathbf{e}_{k+1}$ with itself:
+	\[
+		\mathbf{P}_{k+1} = \mathbb{E} \left[ \mathbf{e}_{k+1} \mathbf{e}_{k+1}^T \right]
+	\]
+	
+	Substituting the error propagation expression into the expectation gives:
+	\begin{align*}
+		\mathbf{P}_{k+1} &= \mathbb{E} \left[ (\mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k)(\mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k)^T \right] \\
+		&= \mathbb{E} \left[ (\mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k)(\mathbf{e}_k^T \mathbf{F}_k^T + \mathbf{w}_k^T) \right] \\
+		&= \mathbb{E} \left[ \mathbf{F}_k \mathbf{e}_k \mathbf{e}_k^T \mathbf{F}_k^T + \mathbf{F}_k \mathbf{e}_k \mathbf{w}_k^T + \mathbf{w}_k \mathbf{e}_k^T \mathbf{F}_k^T + \mathbf{w}_k \mathbf{w}_k^T \right]
+	\end{align*}
+	
+	Since the state transition matrix $\mathbf{F}_k$ is deterministic, it can be factored out of the expectation operator. Applying linearity of expectation yields:
+	\[
+		\mathbf{P}_{k+1} = \mathbf{F}_k \mathbb{E}\left[\mathbf{e}_k \mathbf{e}_k^T\right] \mathbf{F}_k^T + \mathbf{F}_k \mathbb{E}\left[\mathbf{e}_k \mathbf{w}_k^T\right] + \mathbb{E}\left[\mathbf{w}_k \mathbf{e}_k^T\right] \mathbf{F}_k^T + \mathbb{E}\left[\mathbf{w}_k \mathbf{w}_k^T\right]
+	\]
+	
+	Assuming that the process noise $\mathbf{w}_k$ is zero-mean and uncorrelated with the previous estimation error $\mathbf{e}_k$, the cross-terms vanish ($\mathbb{E}\left[\mathbf{e}_k \mathbf{w}_k^T\right] = \mathbf{0}$). Recognizing $\mathbf{P}_k = \mathbb{E}\left[\mathbf{e}_k \mathbf{e}_k^T\right]$ and the process noise covariance $\mathbf{Q}_k = \mathbb{E}\left[\mathbf{w}_k \mathbf{w}_k^T\right]$, we arrive at the covariance prediction step equation:
+	\begin{equation}
+		\mathbf{P}_{k+1} = \mathbf{F}_k \mathbf{P}_k \mathbf{F}_k^T + \mathbf{Q}_k
+		\label{eq:covariance_propagation}
+	\end{equation}
+	
+	In summary, the prediction step of the discrete-time linear Kalman filter propagates both the state estimate and its associated uncertainty forward from time step $k$ to $k+1$ using the system model before any new measurement is incorporated:
+	\begin{enumerate}
+		\item \textbf{True State Propagation} (\ref{eq:true_state_prop}): Models the unobservable physical dynamics of the system, perturbed by white process noise $\mathbf{w}_k$.
+		\item \textbf{State Estimate Prediction} (\ref{eq:estimated_state_prop}): Projects our expected state forward using known control inputs $\mathbf{u}_k$ and state transition dynamics $\mathbf{F}_k$, assuming zero-mean process noise ($\mathbb{E}[\mathbf{w}_k] = \mathbf{0}$).
+		\item \textbf{Covariance Prediction} (\ref{eq:covariance_propagation}): Quantifies how estimation uncertainty grows over time. The term $\mathbf{F}_k \mathbf{P}_k \mathbf{F}_k^T$ maps current uncertainty through system dynamics, while $\mathbf{Q}_k$ accounts for additional uncertainty injected by unknown process disturbances.
+	\end{enumerate}
+	
+	Together, these equations form the time-update phase of the Kalman filter, providing an a priori estimate $\hat{\mathbf{x}}_{k+1}$ alongside an updated measure of confidence $\mathbf{P}_{k+1}$ ready to be refined during the subsequent measurement update step.
+	
+	\section{Measurement update step}
+	
+	TODO: General introduction
+	
+	\subsection{Measurement residual}
+	TODO
+	
+	\subsection{Kalman gain}
+	TODO
+	
+	\section{Posteriori state}
+	TODO
+	
+	\section{Covariance Update}
+	TODO
+
+\end{document}
