@@ -176,20 +176,129 @@
 	
 	Together, these equations form the time-update phase of the Kalman filter, providing an a priori estimate $\hat{\mathbf{x}}_{k+1}$ alongside an updated measure of confidence $\mathbf{P}_{k+1}$ ready to be refined during the subsequent measurement update step.
 	
-	\section{Measurement update step}
+	\section{Measurement Update Step}
 	
-	TODO: General introduction
+	In the measurement update (or correction) step, the predicted state estimate $\hat{\mathbf{x}}_{k}^{-}$ (the \emph{a priori} estimate) is fused with a new observation vector $\mathbf{z}_{k}$ to compute the updated state estimate $\hat{\mathbf{x}}_{k}^{+}$ (the \emph{a posteriori} estimate).
 	
-	\subsection{Measurement residual}
-	TODO
+
+	\noindent The updated state estimate $\hat{\mathbf{x}}_k^+$ is computed as:
 	
-	\subsection{Kalman gain}
-	TODO
+	\begin{equation}
+		\hat{\mathbf{x}}_k^+ = \hat{\mathbf{x}}_k^- + \mathbf{K}_k \left( \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_k^- \right)
+		\label{eq:state_update}
+	\end{equation}
 	
-	\section{Posteriori state}
-	TODO
+	\noindent $\hat{\mathbf{x}}_k^-$ and $\hat{\mathbf{x}}_k^+$ are the \emph{a priori} and \emph{a posteriori} state estimates, respectively. We will go over the different elements of this equation in the upcoming subsections.
+		
+	
+	\subsection{Measurement Residual}
+	
+	The term $\left( \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_k^- \right)$ in Equation~\ref{eq:state_update} is known as the \emph{measurement residual} (or \emph{innovation}):
+	
+	\begin{equation}
+		\mathbf{y}_k = \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_k^-
+		\label{eq:measurement_residual}
+	\end{equation}
+	
+	Here, $\mathbf{z}_{k}$ is the observation vector containing the raw sensor data acquired at step $k$. The matrix $\mathbf{H}_k$ acts as an observation model, mapping the predicted state vector $\hat{\mathbf{x}}_k^-$ from the state space into the measurement space. 
+	
+	By applying $\mathbf{H}_k$ to $\hat{\mathbf{x}}_k^-$, we produce a synthetic measurement—what we \emph{expect} the sensors to report given our prior state estimate. Subtracting this expected measurement from the actual sensor reading $\mathbf{z}_{k}$ yields the residual $\mathbf{y}_k$, which quantifies the error between reality and our prediction. A larger residual drives a proportionally larger state correction through the Kalman gain.
+	
+	\subsubsection*{Example: Mapping State to Measurement}
+	
+	Consider a system tracking 2D position and velocity, where the full state vector is defined as:
+	\begin{equation*}
+		\hat{\mathbf{x}}_k = 
+		\begin{bmatrix} 
+			p_x \\ p_y \\ v_x \\ v_y 
+		\end{bmatrix}
+	\end{equation*}
+	
+	Suppose our sensor setup consists solely of a GPS module capable of measuring position $(p_x, p_y)$, but not velocity. The observation vector $\mathbf{z}_k$ is therefore two-dimensional:
+	\begin{equation*}
+		\mathbf{z}_k = 
+		\begin{bmatrix} 
+			z_{p_x} \\ z_{p_y} 
+		\end{bmatrix}
+	\end{equation*}
+	
+	To isolate the position components from the full four-dimensional state, the observation matrix $\mathbf{H}_k$ is structured as:
+	\begin{equation*}
+		\mathbf{H}_k = 
+		\begin{bmatrix} 
+			1 & 0 & 0 & 0 \\ 
+			0 & 1 & 0 & 0 
+		\end{bmatrix}
+	\end{equation*}
+	
+	Multiplying $\mathbf{H}_k \hat{\mathbf{x}}_k^-$ drops the unobserved velocity components and aligns the predicted state dimensions directly with the measurement vector:
+	\begin{equation*}
+		\mathbf{H}_k \hat{\mathbf{x}}_k^- = 
+		\begin{bmatrix} 
+			1 & 0 & 0 & 0 \\ 
+			0 & 1 & 0 & 0 
+		\end{bmatrix}
+		\begin{bmatrix} 
+			p_x \\ p_y \\ v_x \\ v_y 
+		\end{bmatrix}
+		= 
+		\begin{bmatrix} 
+			p_x \\ p_y 
+		\end{bmatrix}
+	\end{equation*}
+	
+	The residual vector $\mathbf{y}_k$ can then be evaluated directly in the measurement domain as $\begin{bmatrix} z_{p_x} - p_x \\ z_{p_y} - p_y \end{bmatrix}$.
+	
+	
+	\subsection{Kalman Gain}
+	
+	Having computed the measurement residual, we must update the \emph{a priori} state estimate $\hat{\mathbf{x}}_k^-$ to obtain the \emph{a posteriori} estimate $\hat{\mathbf{x}}_k^+$. The central challenge in state estimation is determining the optimal weighting between prediction and observation: should we trust the mathematical model or the sensor data more?
+	
+	This tradeoff is governed by the \emph{Kalman gain} matrix $\mathbf{K}_k$, computed as:
+	
+	\begin{equation}
+		\mathbf{K}_k = \mathbf{P}_k^{-} \mathbf{H}_k^T \left( \mathbf{H}_k \mathbf{P}_k^{-} \mathbf{H}_k^T + \mathbf{R}_k \right)^{-1}
+		\label{eq:kalman_gain}
+	\end{equation}
+	
+	\noindent where:
+	\begin{itemize}
+		\item $\mathbf{P}_k^-$ is the \emph{a priori} error covariance matrix, quantifying the expected uncertainty and correlations among errors in the predicted state estimate.
+		\item $\mathbf{R}_k$ is the measurement noise covariance matrix, representing the inherent variance and noise characteristics of the physical sensors.
+		\item $\mathbf{H}_k$ is the measurement matrix mapping state space into measurement space.
+	\end{itemize}
+	
+	\noindent By comparing $\mathbf{P}_k^-$ against $\mathbf{R}_k$, the Kalman gain dynamically scales the correction factor:
+	\begin{itemize}
+		\item If sensor noise is high relative to state uncertainty ($\mathbf{R}_k \gg \mathbf{H}_k \mathbf{P}_k^- \mathbf{H}_k^T$), $\mathbf{K}_k$ approaches zero, causing the filter to heavily weight the prior state prediction.
+		\item If sensor noise is very low ($\mathbf{R}_k \to \mathbf{0}$), $\mathbf{K}_k$ increases, forcing the updated state to rely almost entirely on the incoming sensor measurement.
+	\end{itemize}
+			
+	\noindent While the complete mathematical derivation is omitted here, the Kalman gain is mathematically optimal. Selecting $\mathbf{K}_k$ according to Equation~\ref{eq:kalman_gain} minimizes the trace of the \emph{a posteriori} error covariance matrix $\mathbf{P}_k^+$, which corresponds to minimizing the total variance of the error in the state estimate.
+	
 	
 	\section{Covariance Update}
-	TODO
+	
+	Having updated the state estimate $\hat{\mathbf{x}}_k^+$, we must update the \emph{a posteriori} error covariance matrix $\mathbf{P}_k^+$, which quantifies the residual uncertainty in our new estimate:
+	
+	\begin{equation}
+		\mathbf{P}_k^+ = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_k^-
+		\label{eq:cov_update}
+	\end{equation}
+	
+	\noindent where $\mathbf{I}$ is the identity matrix of matching dimensions, $\mathbf{K}_k$ is the Kalman gain, $\mathbf{H}_k$ is the measurement matrix, and $\mathbf{P}_k^-$ is the \emph{a priori} error covariance matrix.
+	
+	For floating-point computer implementations, the \emph{Joseph form} formulation is often preferred to preserve symmetry and positive-definiteness:
+	
+	\begin{equation}
+		\mathbf{P}_k^+ = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_k^- (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^T + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^T
+		\label{eq:cov_update_joseph}
+	\end{equation}
+	
+	\subsection*{Variance Reduction via Gaussian Fusion}
+	
+	The core intuition behind this update lies in the properties of Gaussian probability distributions. Fusing two independent Gaussian distributions—the predicted state estimate $\mathcal{N}(\hat{\mathbf{x}}_k^-, \mathbf{P}_k^-)$ and the sensor measurement $\mathcal{N}(\mathbf{z}_k, \mathbf{R}_k)$—yields a new Gaussian distribution $\mathcal{N}(\hat{\mathbf{x}}_k^+, \mathbf{P}_k^+)$ whose variance is strictly lower than either of the two input variances. 
+	
+	Because we are incorporating additional information into the system, our overall uncertainty decreases ($\mathbf{P}_k^+ \le \mathbf{P}_k^-$), sharpening the state estimate at each measurement step.
 
 \end{document}
