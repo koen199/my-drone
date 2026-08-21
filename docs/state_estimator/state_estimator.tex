@@ -2,6 +2,7 @@
 
 \usepackage{amsmath, amssymb, bm}
 \usepackage[a4paper, margin=1in]{geometry}
+\usepackage{graphicx}
 
 \title{State estimator}
 \author{}
@@ -50,9 +51,20 @@
 	The fundamental concept underlying the standard Kalman filter as a state estimator relies on two core steps:
 	\begin{itemize}
 		\item \textbf{Prediction:} Projecting the future state using the current state estimate and control inputs via a dynamic model.
-		\item \textbf{Correction:} Fusing this predicted state with noisy sensor measurements.
+		\item \textbf{Measurement update:} Fusing this predicted state with noisy sensor measurements.
 	\end{itemize}
 	A key strength of the Kalman filter is its ability to stochastically model the uncertainties associated with both the state propagation and the sensor readings. By evaluating these error covariances, the filter dynamically determines the optimal weighting—balancing model predictions against physical measurements to yield the best estimate.
+	
+	It is important to note that state estimation using a Kalman filter is a continuous, iterative process. At each discrete time step $k$, the filter propagates its internal belief forward using system dynamics (Prediction) and refines this belief whenever new sensor data becomes available (Measurement Update). The \textit{a posteriori} output of time step $k$ serves directly as the initial condition for the prediction step at time step $k+1$, forming a closed feedback loop as illustrated in Figure~\ref{fig:my_figure}.
+	
+	\begin{figure}[htbp]
+		\centering
+		\includegraphics[width=0.8\textwidth]{flowchart.drawio.png}
+		\caption{Visualization of different steps in a kalman filter}
+		\label{fig:my_figure}
+	\end{figure}
+	
+	
 	
 	\subsection{Prediction step}
 	Assuming a discrete-time linear system, the state propagation step predicts the state at time step $k+1$ given the current state ($\mathbf{x_k}$) and some input ($\mathbf{u_k}$) at time step $k$:
