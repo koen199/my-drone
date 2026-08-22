@@ -55,7 +55,7 @@
 	\end{itemize}
 	A key strength of the Kalman filter is its ability to stochastically model the uncertainties associated with both the state propagation and the sensor readings. By evaluating these error covariances, the filter dynamically determines the optimal weighting—balancing model predictions against physical measurements to yield the best estimate.
 	
-	It is important to note that state estimation using a Kalman filter is a continuous, iterative process. At each discrete time step $k$, the filter propagates its internal belief forward using system dynamics (Prediction) and refines this belief whenever new sensor data becomes available (Measurement Update). The \textit{a posteriori} output of time step $k$ serves directly as the initial condition for the prediction step at time step $k+1$, forming a closed feedback loop as illustrated in Figure~\ref{fig:my_figure}.
+	It is important to note that state estimation using a Kalman filter is a continuous, iterative process. At each discrete time step $k$, the filter propagates its internal belief forward using system dynamics (Prediction) and refines this belief at time step $k+1$ whenever new sensor data becomes available (Measurement Update). The \textit{a posteriori} output of time step $k$ serves directly as the initial condition for the prediction step at time step $k+1$, forming a closed feedback loop as illustrated in Figure~\ref{fig:my_figure}.
 	
 	\begin{figure}[htbp]
 		\centering
@@ -67,25 +67,25 @@
 	
 	
 	\subsection{Prediction step}
-	Assuming a discrete-time linear system, the state propagation step predicts the state at time step $k+1$ given the current state ($\mathbf{x_k}$) and some input ($\mathbf{u_k}$) at time step $k$:
-
-	The \textbf{true state} evolves according to the physical dynamics subject to unobservable process noise $\mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$:
+	Assuming a discrete-time linear time-invariant (LTI) system, the state propagation step predicts the state at time step $k+1$ given the current state ($\mathbf{x}_{k}$) and some input ($\mathbf{u}_{k}$) at time step $k$:
+	
+	The \textbf{true state} evolves according to the physical dynamics subject to unobservable process noise $\mathbf{w}_{k} \sim \mathcal{N}(\mathbf{0}, \mathbf{Q})$:
 	\begin{equation}
-	\mathbf{x}_{k+1} = \mathbf{F}_k \mathbf{x}_k + \mathbf{B}_k \mathbf{u}_k + \mathbf{w}_k
-	\label{eq:true_state_prop}
+		\mathbf{x}_{k+1} = \mathbf{F} \mathbf{x}_{k} + \mathbf{B} \mathbf{u}_{k} + \mathbf{w}_{k}
+		\label{eq:true_state_prop}
 	\end{equation}
 	
-	Because process noise cannot be known in practice, the \textbf{predicted state estimate} is propagated by taking the conditional expectation ($\mathbb{E}[\mathbf{w}_k] = \mathbf{0}$):
+	Because process noise cannot be known in practice, the \textbf{predicted state estimate} is propagated by taking the conditional expectation ($\mathbb{E}[\mathbf{w}_{k}] = \mathbf{0}$):
 	\begin{equation}
-	\hat{\mathbf{x}}_{k+1} = \mathbf{F}_k \hat{\mathbf{x}}_{k} + \mathbf{B}_k \mathbf{u}_k
-	\label{eq:estimated_state_prop}
+		\hat{\mathbf{x}}_{k+1}^- = \mathbf{F} \hat{\mathbf{x}}_{k}^+ + \mathbf{B} \mathbf{u}_{k}
+		\label{eq:estimated_state_prop}
 	\end{equation}
 	
-	Here, $\mathbf{F}_k$ denotes the state transition matrix, $\mathbf{B}_k$ is the control-input matrix, and $\mathbf{u}_k$ is the control vector at time step $k$.
+	Here, $\mathbf{F}$ denotes the state transition matrix, $\mathbf{B}$ is the control-input matrix, and $\mathbf{u}_{k}$ is the control vector at time step $k$.
 	
 	Several key observations follow from this formulation:
 	\begin{itemize}
-		\item We never have access to the true state $\mathbf{x}_k$; instead, we maintain an estimate, denoted by $\hat{\mathbf{x}}_k$.
+		\item We never have access to the true state $\mathbf{x}_{k}$; instead, we maintain an estimate, denoted by $\hat{\mathbf{x}}_{k}$.
 		\item Rather than treating state and noise variables as deterministic vectors with scalar elements, we model them as \textbf{random vectors} whose elements are governed by probability distributions.
 	\end{itemize}
 	
@@ -148,104 +148,104 @@
 	
 	Now that we know what the covariance matrix is we will discuss what happens with the covariance matrix when we predict the next step:
 	\[
-		\mathbf{e}_{k+1} = \mathbf{x}_{k+1}  - \hat{\mathbf{x}}_{k}
+	\mathbf{e}_{k+1}^- = \mathbf{x}_{k+1} - \hat{\mathbf{x}}_{k+1}^-
 	\]
 	
 	Substitution of equations \ref{eq:true_state_prop} and \ref{eq:estimated_state_prop} yields the dynamic propagation of the state error vector:
 	\[
-		\mathbf{e}_{k+1} = (\mathbf{F}_k \mathbf{x}_k + \mathbf{B}_k \mathbf{u}_k + \mathbf{w}_k) - (\mathbf{F}_k \hat{\mathbf{x}}_k + \mathbf{B}_k \mathbf{u}_k) = \mathbf{F}_k (\mathbf{x}_k - \hat{\mathbf{x}}_k) + \mathbf{w}_k = \mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k
+	\mathbf{e}_{k+1}^- = (\mathbf{F} \mathbf{x}_{k} + \mathbf{B} \mathbf{u}_{k} + \mathbf{w}_{k}) - (\mathbf{F} \hat{\mathbf{x}}_{k}^+ + \mathbf{B} \mathbf{u}_{k}) = \mathbf{F} (\mathbf{x}_{k} - \hat{\mathbf{x}}_{k}^+) + \mathbf{w}_{k} = \mathbf{F} \mathbf{e}_{k}^+ + \mathbf{w}_{k}
 	\]
 	
-	By definition, the predicted error covariance matrix $\mathbf{P}_{k+1}$ is the expected value of the outer product of the prior error vector $\mathbf{e}_{k+1}$ with itself:
+	By definition, the predicted error covariance matrix $\mathbf{P}_{k+1}^-$ is the expected value of the outer product of the prior error vector $\mathbf{e}_{k+1}^-$ with itself:
 	\[
-		\mathbf{P}_{k+1} = \mathbb{E} \left[ \mathbf{e}_{k+1} \mathbf{e}_{k+1}^T \right]
+	\mathbf{P}_{k+1}^- = \mathbb{E} \left[ \mathbf{e}_{k+1}^- (\mathbf{e}_{k+1}^-)^T \right]
 	\]
 	
 	Substituting the error propagation expression into the expectation gives:
 	\begin{align*}
-		\mathbf{P}_{k+1} &= \mathbb{E} \left[ (\mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k)(\mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k)^T \right] \\
-		&= \mathbb{E} \left[ (\mathbf{F}_k \mathbf{e}_k + \mathbf{w}_k)(\mathbf{e}_k^T \mathbf{F}_k^T + \mathbf{w}_k^T) \right] \\
-		&= \mathbb{E} \left[ \mathbf{F}_k \mathbf{e}_k \mathbf{e}_k^T \mathbf{F}_k^T + \mathbf{F}_k \mathbf{e}_k \mathbf{w}_k^T + \mathbf{w}_k \mathbf{e}_k^T \mathbf{F}_k^T + \mathbf{w}_k \mathbf{w}_k^T \right]
+		\mathbf{P}_{k+1}^- &= \mathbb{E} \left[ (\mathbf{F} \mathbf{e}_{k}^+ + \mathbf{w}_{k})(\mathbf{F} \mathbf{e}_{k}^+ + \mathbf{w}_{k})^T \right] \\
+		&= \mathbb{E} \left[ (\mathbf{F} \mathbf{e}_{k}^+ + \mathbf{w}_{k})((\mathbf{e}_{k}^+)^T \mathbf{F}^T + \mathbf{w}_{k}^T) \right] \\
+		&= \mathbb{E} \left[ \mathbf{F} \mathbf{e}_{k}^+ (\mathbf{e}_{k}^+)^T \mathbf{F}^T + \mathbf{F} \mathbf{e}_{k}^+ \mathbf{w}_{k}^T + \mathbf{w}_{k} (\mathbf{e}_{k}^+)^T \mathbf{F}^T + \mathbf{w}_{k} \mathbf{w}_{k}^T \right]
 	\end{align*}
 	
-	Since the state transition matrix $\mathbf{F}_k$ is deterministic, it can be factored out of the expectation operator. Applying linearity of expectation yields:
+	Since the state transition matrix $\mathbf{F}$ is deterministic, it can be factored out of the expectation operator. Applying linearity of expectation yields:
 	\[
-		\mathbf{P}_{k+1} = \mathbf{F}_k \mathbb{E}\left[\mathbf{e}_k \mathbf{e}_k^T\right] \mathbf{F}_k^T + \mathbf{F}_k \mathbb{E}\left[\mathbf{e}_k \mathbf{w}_k^T\right] + \mathbb{E}\left[\mathbf{w}_k \mathbf{e}_k^T\right] \mathbf{F}_k^T + \mathbb{E}\left[\mathbf{w}_k \mathbf{w}_k^T\right]
+	\mathbf{P}_{k+1}^- = \mathbf{F} \mathbb{E}\left[\mathbf{e}_{k}^+ (\mathbf{e}_{k}^+)^T\right] \mathbf{F}^T + \mathbf{F} \mathbb{E}\left[\mathbf{e}_{k}^+ \mathbf{w}_{k}^T\right] + \mathbb{E}\left[\mathbf{w}_{k} (\mathbf{e}_{k}^+)^T\right] \mathbf{F}^T + \mathbb{E}\left[\mathbf{w}_{k} \mathbf{w}_{k}^T\right]
 	\]
 	
-	Assuming that the process noise $\mathbf{w}_k$ is zero-mean and uncorrelated with the previous estimation error $\mathbf{e}_k$, the cross-terms vanish ($\mathbb{E}\left[\mathbf{e}_k \mathbf{w}_k^T\right] = \mathbf{0}$). Recognizing $\mathbf{P}_k = \mathbb{E}\left[\mathbf{e}_k \mathbf{e}_k^T\right]$ and the process noise covariance $\mathbf{Q}_k = \mathbb{E}\left[\mathbf{w}_k \mathbf{w}_k^T\right]$, we arrive at the covariance prediction step equation:
+	Assuming that the process noise $\mathbf{w}_{k}$ is zero-mean and uncorrelated with the previous estimation error $\mathbf{e}_{k}^+$, the cross-terms vanish ($\mathbb{E}\left[\mathbf{e}_{k}^+ \mathbf{w}_{k}^T\right] = \mathbf{0}$). Recognizing $\mathbf{P}_{k}^+ = \mathbb{E}\left[\mathbf{e}_{k}^+ (\mathbf{e}_{k}^+)^T\right]$ and the process noise covariance $\mathbf{Q} = \mathbb{E}\left[\mathbf{w}_{k} \mathbf{w}_{k}^T\right]$, we arrive at the covariance prediction step equation:
 	\begin{equation}
-		\mathbf{P}_{k+1} = \mathbf{F}_k \mathbf{P}_k \mathbf{F}_k^T + \mathbf{Q}_k
+		\mathbf{P}_{k+1}^- = \mathbf{F} \mathbf{P}_{k}^+ \mathbf{F}^T + \mathbf{Q}
 		\label{eq:covariance_propagation}
 	\end{equation}
 	
 	In summary, the prediction step of the discrete-time linear Kalman filter propagates both the state estimate and its associated uncertainty forward from time step $k$ to $k+1$ using the system model before any new measurement is incorporated:
 	\begin{enumerate}
-		\item \textbf{True State Propagation} (\ref{eq:true_state_prop}): Models the unobservable physical dynamics of the system, perturbed by white process noise $\mathbf{w}_k$.
-		\item \textbf{State Estimate Prediction} (\ref{eq:estimated_state_prop}): Projects our expected state forward using known control inputs $\mathbf{u}_k$ and state transition dynamics $\mathbf{F}_k$, assuming zero-mean process noise ($\mathbb{E}[\mathbf{w}_k] = \mathbf{0}$).
-		\item \textbf{Covariance Prediction} (\ref{eq:covariance_propagation}): Quantifies how estimation uncertainty grows over time. The term $\mathbf{F}_k \mathbf{P}_k \mathbf{F}_k^T$ maps current uncertainty through system dynamics, while $\mathbf{Q}_k$ accounts for additional uncertainty injected by unknown process disturbances.
+		\item \textbf{True State Propagation} (\ref{eq:true_state_prop}): Models the unobservable physical dynamics of the system, perturbed by white process noise $\mathbf{w}_{k}$.
+		\item \textbf{State Estimate Prediction} (\ref{eq:estimated_state_prop}): Projects our expected state forward using known control inputs $\mathbf{u}_{k}$ and state transition dynamics $\mathbf{F}$, assuming zero-mean process noise ($\mathbb{E}[\mathbf{w}_{k}] = \mathbf{0}$).
+		\item \textbf{Covariance Prediction} (\ref{eq:covariance_propagation}): Quantifies how estimation uncertainty grows over time. The term $\mathbf{F} \mathbf{P}_{k}^+ \mathbf{F}^T$ maps current uncertainty through system dynamics, while $\mathbf{Q}$ accounts for additional uncertainty injected by unknown process disturbances.
 	\end{enumerate}
 	
-	Together, these equations form the time-update phase of the Kalman filter, providing an a priori estimate $\hat{\mathbf{x}}_{k+1}$ alongside an updated measure of confidence $\mathbf{P}_{k+1}$ ready to be refined during the subsequent measurement update step.
+	Together, these equations form the time-update phase of the Kalman filter, providing an a priori estimate $\hat{\mathbf{x}}_{k+1}^-$ alongside an updated measure of confidence $\mathbf{P}_{k+1}^-$ ready to be refined during the subsequent measurement update step.
 	
 	\section{Measurement Update Step}
 	
-	In the measurement update (or correction) step, the predicted state estimate $\hat{\mathbf{x}}_{k}^{-}$ (the \emph{a priori} estimate) is fused with a new observation vector $\mathbf{z}_{k}$ to compute the updated state estimate $\hat{\mathbf{x}}_{k}^{+}$ (the \emph{a posteriori} estimate).
+	In the measurement update (or correction) step, the predicted state estimate $\hat{\mathbf{x}}_{k+1}^{-}$ (the \emph{a priori} estimate) is fused with a new observation vector $\mathbf{z}_{k+1}$ to compute the updated state estimate $\hat{\mathbf{x}}_{k+1}^{+}$ (the \emph{a posteriori} estimate).
 	
-
-	\noindent The updated state estimate $\hat{\mathbf{x}}_k^+$ is computed as:
+	
+	\noindent The updated state estimate $\hat{\mathbf{x}}_{k+1}^+$ is computed as:
 	
 	\begin{equation}
-		\hat{\mathbf{x}}_k^+ = \hat{\mathbf{x}}_k^- + \mathbf{K}_k \left( \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_k^- \right)
+		\hat{\mathbf{x}}_{k+1}^+ = \hat{\mathbf{x}}_{k+1}^- + \mathbf{K} \left( \mathbf{z}_{k+1} - \mathbf{H} \hat{\mathbf{x}}_{k+1}^- \right)
 		\label{eq:state_update}
 	\end{equation}
 	
-	\noindent $\hat{\mathbf{x}}_k^-$ and $\hat{\mathbf{x}}_k^+$ are the \emph{a priori} and \emph{a posteriori} state estimates, respectively. We will go over the different elements of this equation in the upcoming subsections.
-		
+	\noindent $\hat{\mathbf{x}}_{k+1}^-$ and $\hat{\mathbf{x}}_{k+1}^+$ are the \emph{a priori} and \emph{a posteriori} state estimates, respectively. We will go over the different elements of this equation in the upcoming subsections.
+	
 	
 	\subsection{Measurement Residual}
 	
-	The term $\left( \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_k^- \right)$ in Equation~\ref{eq:state_update} is known as the \emph{measurement residual} (or \emph{innovation}):
+	The term $\left( \mathbf{z}_{k+1} - \mathbf{H} \hat{\mathbf{x}}_{k+1}^- \right)$ in Equation~\ref{eq:state_update} is known as the \emph{measurement residual} (or \emph{innovation}):
 	
 	\begin{equation}
-		\mathbf{y}_k = \mathbf{z}_k - \mathbf{H}_k \hat{\mathbf{x}}_k^-
+		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - \mathbf{H} \hat{\mathbf{x}}_{k+1}^-
 		\label{eq:measurement_residual}
 	\end{equation}
 	
-	Here, $\mathbf{z}_{k}$ is the observation vector containing the raw sensor data acquired at step $k$. The matrix $\mathbf{H}_k$ acts as an observation model, mapping the predicted state vector $\hat{\mathbf{x}}_k^-$ from the state space into the measurement space. 
+	Here, $\mathbf{z}_{k+1}$ is the observation vector containing the raw sensor data acquired at step $k+1$. The matrix $\mathbf{H}$ acts as an observation model, mapping the predicted state vector $\hat{\mathbf{x}}_{k+1}^-$ from the state space into the measurement space. 
 	
-	By applying $\mathbf{H}_k$ to $\hat{\mathbf{x}}_k^-$, we produce a synthetic measurement—what we \emph{expect} the sensors to report given our prior state estimate. Subtracting this expected measurement from the actual sensor reading $\mathbf{z}_{k}$ yields the residual $\mathbf{y}_k$, which quantifies the error between reality and our prediction. A larger residual drives a proportionally larger state correction through the Kalman gain.
+	By applying $\mathbf{H}$ to $\hat{\mathbf{x}}_{k+1}^-$, we produce a synthetic measurement—what we \emph{expect} the sensors to report given our prior state estimate. Subtracting this expected measurement from the actual sensor reading $\mathbf{z}_{k+1}$ yields the residual $\mathbf{y}_{k+1}$, which quantifies the error between reality and our prediction. A larger residual drives a proportionally larger state correction through the Kalman gain.
 	
 	\subsubsection*{Example: Mapping State to Measurement}
 	
 	Consider a system tracking 2D position and velocity, where the full state vector is defined as:
 	\begin{equation*}
-		\hat{\mathbf{x}}_k = 
+		\hat{\mathbf{x}}_{k+1} = 
 		\begin{bmatrix} 
 			p_x \\ p_y \\ v_x \\ v_y 
 		\end{bmatrix}
 	\end{equation*}
 	
-	Suppose our sensor setup consists solely of a GPS module capable of measuring position $(p_x, p_y)$, but not velocity. The observation vector $\mathbf{z}_k$ is therefore two-dimensional:
+	Suppose our sensor setup consists solely of a GPS module capable of measuring position $(p_x, p_y)$, but not velocity. The observation vector $\mathbf{z}_{k+1}$ is therefore two-dimensional:
 	\begin{equation*}
-		\mathbf{z}_k = 
+		\mathbf{z}_{k+1} = 
 		\begin{bmatrix} 
 			z_{p_x} \\ z_{p_y} 
 		\end{bmatrix}
 	\end{equation*}
 	
-	To isolate the position components from the full four-dimensional state, the observation matrix $\mathbf{H}_k$ is structured as:
+	To isolate the position components from the full four-dimensional state, the observation matrix $\mathbf{H}$ is structured as:
 	\begin{equation*}
-		\mathbf{H}_k = 
+		\mathbf{H} = 
 		\begin{bmatrix} 
 			1 & 0 & 0 & 0 \\ 
 			0 & 1 & 0 & 0 
 		\end{bmatrix}
 	\end{equation*}
 	
-	Multiplying $\mathbf{H}_k \hat{\mathbf{x}}_k^-$ drops the unobserved velocity components and aligns the predicted state dimensions directly with the measurement vector:
+	Multiplying $\mathbf{H} \hat{\mathbf{x}}_{k+1}^-$ drops the unobserved velocity components and aligns the predicted state dimensions directly with the measurement vector:
 	\begin{equation*}
-		\mathbf{H}_k \hat{\mathbf{x}}_k^- = 
+		\mathbf{H} \hat{\mathbf{x}}_{k+1}^- = 
 		\begin{bmatrix} 
 			1 & 0 & 0 & 0 \\ 
 			0 & 1 & 0 & 0 
@@ -259,58 +259,222 @@
 		\end{bmatrix}
 	\end{equation*}
 	
-	The residual vector $\mathbf{y}_k$ can then be evaluated directly in the measurement domain as $\begin{bmatrix} z_{p_x} - p_x \\ z_{p_y} - p_y \end{bmatrix}$.
+	The residual vector $\mathbf{y}_{k+1}$ can then be evaluated directly in the measurement domain as $\begin{bmatrix} z_{p_x} - p_x \\ z_{p_y} - p_y \end{bmatrix}$.
 	
 	
 	\subsection{Kalman Gain}
 	
-	Having computed the measurement residual, we must update the \emph{a priori} state estimate $\hat{\mathbf{x}}_k^-$ to obtain the \emph{a posteriori} estimate $\hat{\mathbf{x}}_k^+$. The central challenge in state estimation is determining the optimal weighting between prediction and observation: should we trust the mathematical model or the sensor data more?
+	Having computed the measurement residual, we must update the \emph{a priori} state estimate $\hat{\mathbf{x}}_{k+1}^-$ to obtain the \emph{a posteriori} estimate $\hat{\mathbf{x}}_{k+1}^+$. The central challenge in state estimation is determining the optimal weighting between prediction and observation: should we trust the mathematical model or the sensor data more?
 	
-	This tradeoff is governed by the \emph{Kalman gain} matrix $\mathbf{K}_k$, computed as:
+	This tradeoff is governed by the \emph{Kalman gain} matrix $\mathbf{K}$, computed as:
 	
 	\begin{equation}
-		\mathbf{K}_k = \mathbf{P}_k^{-} \mathbf{H}_k^T \left( \mathbf{H}_k \mathbf{P}_k^{-} \mathbf{H}_k^T + \mathbf{R}_k \right)^{-1}
+		\mathbf{K} = \mathbf{P}_{k+1}^{-} \mathbf{H}^T \left( \mathbf{H} \mathbf{P}_{k+1}^{-} \mathbf{H}^T + \mathbf{R} \right)^{-1}
 		\label{eq:kalman_gain}
 	\end{equation}
 	
 	\noindent where:
 	\begin{itemize}
-		\item $\mathbf{P}_k^-$ is the \emph{a priori} error covariance matrix, quantifying the expected uncertainty and correlations among errors in the predicted state estimate.
-		\item $\mathbf{R}_k$ is the measurement noise covariance matrix, representing the inherent variance and noise characteristics of the physical sensors.
-		\item $\mathbf{H}_k$ is the measurement matrix mapping state space into measurement space.
+		\item $\mathbf{P}_{k+1}^-$ is the \emph{a priori} error covariance matrix, quantifying the expected uncertainty and correlations among errors in the predicted state estimate.
+		\item $\mathbf{R}$ is the measurement noise covariance matrix, representing the inherent variance and noise characteristics of the physical sensors.
+		\item $\mathbf{H}$ is the measurement matrix mapping state space into measurement space.
 	\end{itemize}
 	
-	\noindent By comparing $\mathbf{P}_k^-$ against $\mathbf{R}_k$, the Kalman gain dynamically scales the correction factor:
+	\noindent By comparing $\mathbf{P}_{k+1}^-$ against $\mathbf{R}$, the Kalman gain dynamically scales the correction factor:
 	\begin{itemize}
-		\item If sensor noise is high relative to state uncertainty ($\mathbf{R}_k \gg \mathbf{H}_k \mathbf{P}_k^- \mathbf{H}_k^T$), $\mathbf{K}_k$ approaches zero, causing the filter to heavily weight the prior state prediction.
-		\item If sensor noise is very low ($\mathbf{R}_k \to \mathbf{0}$), $\mathbf{K}_k$ increases, forcing the updated state to rely almost entirely on the incoming sensor measurement.
+		\item If sensor noise is high relative to state uncertainty ($\mathbf{R} \gg \mathbf{H} \mathbf{P}_{k+1}^- \mathbf{H}^T$), $\mathbf{K}$ approaches zero, causing the filter to heavily weight the prior state prediction.
+		\item If sensor noise is very low ($\mathbf{R} \to \mathbf{0}$), $\mathbf{K}$ increases, forcing the updated state to rely almost entirely on the incoming sensor measurement.
 	\end{itemize}
-			
-	\noindent While the complete mathematical derivation is omitted here, the Kalman gain is mathematically optimal. Selecting $\mathbf{K}_k$ according to Equation~\ref{eq:kalman_gain} minimizes the trace of the \emph{a posteriori} error covariance matrix $\mathbf{P}_k^+$, which corresponds to minimizing the total variance of the error in the state estimate.
+	
+	\noindent While the complete mathematical derivation is omitted here, the Kalman gain is mathematically optimal. Selecting $\mathbf{K}$ according to Equation~\ref{eq:kalman_gain} minimizes the trace of the \emph{a posteriori} error covariance matrix $\mathbf{P}_{k+1}^+$, which corresponds to minimizing the total variance of the error in the state estimate.
 	
 	
 	\section{Covariance Update}
 	
-	Having updated the state estimate $\hat{\mathbf{x}}_k^+$, we must update the \emph{a posteriori} error covariance matrix $\mathbf{P}_k^+$, which quantifies the residual uncertainty in our new estimate:
+	Having updated the state estimate $\hat{\mathbf{x}}_{k+1}^+$, we must update the \emph{a posteriori} error covariance matrix $\mathbf{P}_{k+1}^+$, which quantifies the residual uncertainty in our new estimate:
 	
 	\begin{equation}
-		\mathbf{P}_k^+ = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_k^-
+		\mathbf{P}_{k+1}^+ = (\mathbf{I} - \mathbf{K} \mathbf{H}) \mathbf{P}_{k+1}^-
 		\label{eq:cov_update}
 	\end{equation}
 	
-	\noindent where $\mathbf{I}$ is the identity matrix of matching dimensions, $\mathbf{K}_k$ is the Kalman gain, $\mathbf{H}_k$ is the measurement matrix, and $\mathbf{P}_k^-$ is the \emph{a priori} error covariance matrix.
+	\noindent where $\mathbf{I}$ is the identity matrix of matching dimensions, $\mathbf{K}$ is the Kalman gain, $\mathbf{H}$ is the measurement matrix, and $\mathbf{P}_{k+1}^-$ is the \emph{a priori} error covariance matrix.
 	
 	For floating-point computer implementations, the \emph{Joseph form} formulation is often preferred to preserve symmetry and positive-definiteness:
 	
 	\begin{equation}
-		\mathbf{P}_k^+ = (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k) \mathbf{P}_k^- (\mathbf{I} - \mathbf{K}_k \mathbf{H}_k)^T + \mathbf{K}_k \mathbf{R}_k \mathbf{K}_k^T
+		\mathbf{P}_{k+1}^+ = (\mathbf{I} - \mathbf{K} \mathbf{H}) \mathbf{P}_{k+1}^- (\mathbf{I} - \mathbf{K} \mathbf{H})^T + \mathbf{K} \mathbf{R} \mathbf{K}^T
 		\label{eq:cov_update_joseph}
 	\end{equation}
 	
 	\subsection*{Variance Reduction via Gaussian Fusion}
 	
-	The core intuition behind this update lies in the properties of Gaussian probability distributions. Fusing two independent Gaussian distributions—the predicted state estimate $\mathcal{N}(\hat{\mathbf{x}}_k^-, \mathbf{P}_k^-)$ and the sensor measurement $\mathcal{N}(\mathbf{z}_k, \mathbf{R}_k)$—yields a new Gaussian distribution $\mathcal{N}(\hat{\mathbf{x}}_k^+, \mathbf{P}_k^+)$ whose variance is strictly lower than either of the two input variances. 
+	The core intuition behind this update lies in the properties of Gaussian probability distributions. Fusing two independent Gaussian distributions—the predicted state estimate $\mathcal{N}(\hat{\mathbf{x}}_{k+1}^-, \mathbf{P}_{k+1}^-)$ and the sensor measurement $\mathcal{N}(\mathbf{z}_{k+1}, \mathbf{R})$—yields a new Gaussian distribution $\mathcal{N}(\hat{\mathbf{x}}_{k+1}^+, \mathbf{P}_{k+1}^+)$ whose variance is strictly lower than either of the two input variances. 
 	
-	Because we are incorporating additional information into the system, our overall uncertainty decreases ($\mathbf{P}_k^+ \le \mathbf{P}_k^-$), sharpening the state estimate at each measurement step.
+	Because we are incorporating additional information into the system, our overall uncertainty decreases ($\mathbf{P}_{k+1}^+ \le \mathbf{P}_{k+1}^-$), sharpening the state estimate at each measurement step.
+	
+	\section{Kalman filter: practical example}
+	Now that we have covered the underlying theory of the filter, let us work out a concrete 2D tracking example. Consider a vehicle moving in a two-dimensional plane ($x\text{--}y$). The vehicle is equipped with two sensors:
+	\begin{itemize}
+		\item A \textbf{GPS receiver} providing absolute position measurements $(p_x, p_y)$.
+		\item An \textbf{accelerometer} measuring linear accelerations $(a_x, a_y)$ along the movement axes.
+	\end{itemize}
+	
+	Our objective is to estimate the state vector $\mathbf{x} \in \mathbb{R}^4$, consisting of 2D position and velocity:
+	\begin{equation}
+		\mathbf{x}_k = 
+		\begin{bmatrix}
+			p_x \\
+			p_y \\
+			v_x \\
+			v_y
+		\end{bmatrix}
+	\end{equation}
+	
+	In an ideal, noise-free environment, an initial state along with accelerometer readings would suffice to reconstruct the trajectory using basic kinematic integration:
+	\begin{align*}
+		\mathbf{v}(t) &= \mathbf{v}_0 + \int_{0}^{t} \mathbf{a}(\tau) \, d\tau \\
+		\mathbf{p}(t) &= \mathbf{p}_0 + \int_{0}^{t} \mathbf{v}(\tau) \, d\tau
+	\end{align*}
+	
+	In practice, however, raw accelerometer measurements suffer from noise and biases. Integrating noisy measurements over time causes numerical integration errors to accumulate, leading to severe \textit{position drift}. To eliminate this drift, we fuse the high-rate IMU/accelerometer data with absolute GPS position updates inside a Kalman filter framework. 
+	
+	Specifically, accelerometer measurements serve as the control input $\mathbf{u}_k$ during the prediction step, while GPS observations form the measurement vector $\mathbf{z}_k$ during the correction step.
+	
+	\subsection{System Modeling and State Propagation}
+	
+	Assuming a constant time step $\Delta t$, continuous kinematic integration discretized via Taylor expansion yields:
+	\begin{align*}
+		p_{x, k+1} &= p_{x, k} + v_{x, k} \Delta t + \frac{1}{2} a_{x, k} \Delta t^2 \\
+		v_{x, k+1} &= v_{x, k} + a_{x, k} \Delta t
+	\end{align*}
+	
+	We express this discrete linear system in standard state-space matrix notation:
+	\begin{equation}
+		\mathbf{x}_{k+1} = \mathbf{F} \mathbf{x}_k + \mathbf{B} \mathbf{u}_k + \mathbf{w}_k
+	\end{equation}
+	
+	where the control input vector is $\mathbf{u}_k = [a_{x, k}, a_{y, k}]^\top$. The state transition matrix $\mathbf{F}$ and control-input matrix $\mathbf{B}$ are defined as:
+	\begin{equation}
+		\mathbf{F} = 
+		\begin{bmatrix}
+			1 & 0 & \Delta t & 0 \\
+			0 & 1 & 0 & \Delta t \\
+			0 & 0 & 1 & 0 \\
+			0 & 0 & 0 & 1
+		\end{bmatrix}, \quad
+		\mathbf{B} = 
+		\begin{bmatrix}
+			\frac{1}{2}\Delta t^2 & 0 \\
+			0 & \frac{1}{2}\Delta t^2 \\
+			\Delta t & 0 \\
+			0 & \Delta t
+		\end{bmatrix}
+	\end{equation}
+	
+	\subsection{Process Noise Covariance ($\mathbf{Q}$)}
+	
+	By definition, the process noise covariance matrix represents the expected outer product of the state noise vector $\mathbf{w}_k$ with itself:
+	\begin{equation}
+		\mathbf{Q} = \mathbb{E}\left[\mathbf{w}_k \mathbf{w}_k^\top\right]
+	\end{equation}
+	
+	To compute $\mathbf{Q}$ in practice, we must trace where this state noise originates physically. In our system, the accelerometer readings act as control inputs $\mathbf{u}_k$. However, the physical sensors are subject to zero-mean Gaussian white noise $\mathbf{n}_a = [n_{ax}, n_{ay}]^\top$ with known variance $\sigma_a^2$:
+	\begin{equation}
+		\mathbf{u}_{\text{measured}} = \mathbf{u}_{\text{true}} + \mathbf{n}_a, \quad \text{where } \mathbf{n}_a \sim \mathcal{N}\left(\mathbf{0}, \mathbf{Q}_u\right)
+	\end{equation}
+	
+	The sensor noise covariance matrix $\mathbf{Q}_u \in \mathbb{R}^{2 \times 2}$ is defined as:
+	\begin{equation}
+		\mathbf{Q}_u = \mathbb{E}\left[\mathbf{n}_a \mathbf{n}_a^\top\right] = 
+		\begin{bmatrix}
+			\sigma_a^2 & 0 \\
+			0 & \sigma_a^2
+		\end{bmatrix} = \sigma_a^2 \mathbf{I}_{2 \times 2}
+	\end{equation}
+	
+	Substituting the noisy measurement $\mathbf{u}_{\text{measured}}$ into the system propagation equation reveals how sensor noise enters the state space:
+	\begin{equation}
+		\mathbf{x}_{k+1} = \mathbf{F}\mathbf{x}_k + \mathbf{B}(\mathbf{u}_{\text{true}} + \mathbf{n}_a) = \underbrace{\mathbf{F}\mathbf{x}_k + \mathbf{B}\mathbf{u}_{\text{true}}}_{\text{True Motion}} + \underbrace{\mathbf{B}\mathbf{n}_a}_{\text{State Noise } \mathbf{w}_k}
+	\end{equation}
+	
+	Equating the noise term yields $\mathbf{w}_k = \mathbf{B}\mathbf{n}_a$. Substituting this back into the expectation definition gives:
+	\begin{align}
+		\mathbf{Q} &= \mathbb{E}\left[(\mathbf{B}\mathbf{n}_a)(\mathbf{B}\mathbf{n}_a)^\top\right] \nonumber \\
+		&= \mathbb{E}\left[\mathbf{B}\mathbf{n}_a \mathbf{n}_a^\top \mathbf{B}^\top\right] \nonumber \\
+		&= \mathbf{B} \, \mathbb{E}\left[\mathbf{n}_a \mathbf{n}_a^\top\right] \mathbf{B}^\top \nonumber \\
+		&= \mathbf{B} \mathbf{Q}_u \mathbf{B}^\top = \sigma_a^2 \mathbf{B}\mathbf{B}^\top
+	\end{align}
+	
+	Finally, evaluating the matrix product $\mathbf{B}\mathbf{B}^\top$ yields the explicit $4 \times 4$ process noise matrix $\mathbf{Q}$:
+	\begin{equation}
+		\mathbf{Q} = \sigma_a^2
+		\begin{bmatrix}
+			\frac{1}{4}\Delta t^4 & 0 & \frac{1}{2}\Delta t^3 & 0 \\
+			0 & \frac{1}{4}\Delta t^4 & 0 & \frac{1}{2}\Delta t^3 \\
+			\frac{1}{2}\Delta t^3 & 0 & \Delta t^2 & 0 \\
+			0 & \frac{1}{2}\Delta t^3 & 0 & \Delta t^2
+		\end{bmatrix}
+	\end{equation}
 
+	
+	\subsection{Measurement Model ($\mathbf{H}$) and Measurement Noise ($\mathbf{R}$)}
+	
+	The GPS module directly measures position $(p_x, p_y)$, yielding a two-dimensional measurement vector $\mathbf{z}_k \in \mathbb{R}^2$:
+	\begin{equation}
+		\mathbf{z}_k = 
+		\begin{bmatrix}
+			z_{p_x} \\
+			z_{p_y}
+		\end{bmatrix}
+	\end{equation}
+	
+	The measurement matrix $\mathbf{H}$ extracts the position components from the 4D state vector:
+	\begin{equation}
+		\mathbf{H} = 
+		\begin{bmatrix}
+			1 & 0 & 0 & 0 \\
+			0 & 1 & 0 & 0
+		\end{bmatrix}
+	\end{equation}
+	
+	Assuming independent GPS measurement errors along the $x$ and $y$ axes with variance $\sigma_{\text{GPS}}^2$ (e.g., $\sigma_{\text{GPS}}^2 = 2.0 \text{ m}^2$), the measurement noise covariance matrix $\mathbf{R} \in \mathbb{R}^{2 \times 2}$ is given by:
+	\begin{equation}
+		\mathbf{R} = 
+		\begin{bmatrix}
+			\sigma_{\text{GPS}}^2 & 0 \\
+			0 & \sigma_{\text{GPS}}^2
+		\end{bmatrix}
+	\end{equation}
+	
+	\subsection{Filter Initialization}
+	
+	Before running the predictive loop, we initialize the state vector $\hat{\mathbf{x}}_0^+$ and state covariance matrix $\mathbf{P}_0^+$. 
+	
+	If the initial position is obtained from the first GPS fix and the initial velocity is assumed to be zero, the state vector is initialized as:
+	\begin{equation}
+		\hat{\mathbf{x}}_0^+ = 
+		\begin{bmatrix}
+			z_{p_x, 0} \\
+			z_{p_y, 0} \\
+			0 \\
+			0
+		\end{bmatrix}
+	\end{equation}
+	
+	The initial covariance matrix $\mathbf{P}_0^+$ represents our confidence in these starting values. Position uncertainty is tied directly to GPS accuracy ($\sigma_{\text{GPS}}^2$), while velocity uncertainty is set to a higher variance $\sigma_{v,0}^2$ to reflect initial guessing:
+	\begin{equation}
+		\mathbf{P}_0^+ = 
+		\begin{bmatrix}
+			\sigma_{\text{GPS}}^2 & 0 & 0 & 0 \\
+			0 & \sigma_{\text{GPS}}^2 & 0 & 0 \\
+			0 & 0 & \sigma_{v,0}^2 & 0 \\
+			0 & 0 & 0 & \sigma_{v,0}^2
+		\end{bmatrix}
+	\end{equation}
+	
+	With $\mathbf{F}$, $\mathbf{B}$, $\mathbf{Q}$, $\mathbf{H}$, $\mathbf{R}$, $\hat{\mathbf{x}}_0^+$, and $\mathbf{P}_0^+$ fully specified, the filter executes sequentially across discrete time steps via the prediction and update equations derived in Sections 2 and 3.
+		
+	
+	
 \end{document}
