@@ -203,20 +203,51 @@
 	\noindent $\hat{\mathbf{x}}_{k+1}^-$ and $\hat{\mathbf{x}}_{k+1}^+$ are the \emph{a priori} and \emph{a posteriori} state estimates, respectively. We will go over the different elements of this equation in the upcoming subsections.
 	
 	
-	\subsection{Measurement Residual}
+	\subsection{Measurement Residual and Innovation Covariance}
 	
-	The term $\left( \mathbf{z}_{k+1} - \mathbf{H} \hat{\mathbf{x}}_{k+1}^- \right)$ in Equation~\ref{eq:state_update} is known as the \emph{measurement residual} (or \emph{innovation}):
+	The term $\left( \mathbf{z}_{k+1} - \mathbf{H} \hat{\mathbf{x}}_{k+1}^- \right)$ in Equation~\ref{eq:state_update} is defined as the \emph{measurement residual} (or \emph{innovation}):
 	
 	\begin{equation}
 		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - \mathbf{H} \hat{\mathbf{x}}_{k+1}^-
 		\label{eq:measurement_residual}
 	\end{equation}
 	
-	Here, $\mathbf{z}_{k+1}$ is the observation vector containing the raw sensor data acquired at step $k+1$. The matrix $\mathbf{H}$ acts as an observation model, mapping the predicted state vector $\hat{\mathbf{x}}_{k+1}^-$ from the state space into the measurement space. 
+	Here, $\mathbf{z}_{k+1}$ is the observation vector containing raw sensor data acquired at step $k+1$. The observation matrix $\mathbf{H}$ maps the prior state estimate $\hat{\mathbf{x}}_{k+1}^-$ from the state space into the measurement space. 
 	
-	By applying $\mathbf{H}$ to $\hat{\mathbf{x}}_{k+1}^-$, we produce a synthetic measurement—what we \emph{expect} the sensors to report given our prior state estimate. Subtracting this expected measurement from the actual sensor reading $\mathbf{z}_{k+1}$ yields the residual $\mathbf{y}_{k+1}$, which quantifies the error between reality and our prediction. A larger residual drives a proportionally larger state correction through the Kalman gain.
+	Applying $\mathbf{H}$ to $\hat{\mathbf{x}}_{k+1}^-$ yields a predicted measurement—representing what the sensors are expected to report based on the prior estimate. The difference between the actual measurement $\mathbf{z}_{k+1}$ and this prediction forms the residual $\mathbf{y}_{k+1}$, which quantifies the discrepancy between observation and prediction. As shown in Equation~\ref{eq:state_update}, this residual drives the state update, with its influence weighted by the Kalman gain $\mathbf{K}$.
 	
-	\subsubsection*{Example: Mapping State to Measurement}
+	To compute the optimal Kalman gain, we must evaluate the uncertainty of this residual via its covariance matrix, denoted $\mathbf{S}_{k+1}$. Recalling the true measurement model,
+	\begin{equation}
+		\mathbf{z}_{k+1} = \mathbf{H} \mathbf{x}_{k+1} + \mathbf{v}_{k+1}
+		\label{eq:true_measurement_model}
+	\end{equation}
+	where $\mathbf{x}_{k+1}$ is the true state and $\mathbf{v}_{k+1} \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_{k+1})$ represents zero-mean measurement noise with covariance matrix $\mathbf{R}_{k+1}$. Substituting Equation~\ref{eq:true_measurement_model} into Equation~\ref{eq:measurement_residual} expresses the residual in terms of the prior estimation error $\mathbf{e}_{k+1}^- = \mathbf{x}_{k+1} - \hat{\mathbf{x}}_{k+1}^-$:
+	
+	\begin{align}
+		\mathbf{y}_{k+1} &= \left(\mathbf{H} \mathbf{x}_{k+1} + \mathbf{v}_{k+1}\right) - \mathbf{H} \hat{\mathbf{x}}_{k+1}^- \nonumber \\
+		&= \mathbf{H}\left(\mathbf{x}_{k+1} - \hat{\mathbf{x}}_{k+1}^-\right) + \mathbf{v}_{k+1} \nonumber \\
+		&= \mathbf{H} \mathbf{e}_{k+1}^- + \mathbf{v}_{k+1}
+		\label{eq:residual_error_form}
+	\end{align}
+	
+	Assuming the prior estimation error $\mathbf{e}_{k+1}^-$ and the measurement noise $\mathbf{v}_{k+1}$ are uncorrelated with zero mean, the innovation covariance matrix $\mathbf{S}_{k+1} = \mathbb{E}\left[\mathbf{y}_{k+1} \mathbf{y}_{k+1}^T\right]$ is derived as:
+	
+	\begin{align}
+		\mathbf{S}_{k+1} &= \mathbb{E}\left[ (\mathbf{H} \mathbf{e}_{k+1}^- + \mathbf{v}_{k+1}) (\mathbf{H} \mathbf{e}_{k+1}^- + \mathbf{v}_{k+1})^T \right] \nonumber \\
+		&= \mathbb{E}\left[ \mathbf{H} \mathbf{e}_{k+1}^- (\mathbf{e}_{k+1}^-)^T \mathbf{H}^T + \mathbf{H} \mathbf{e}_{k+1}^- \mathbf{v}_{k+1}^T + \mathbf{v}_{k+1} (\mathbf{e}_{k+1}^-)^T \mathbf{H}^T + \mathbf{v}_{k+1} \mathbf{v}_{k+1}^T \right] \nonumber \\
+		&= \mathbf{H} \mathbb{E}\left[ \mathbf{e}_{k+1}^- (\mathbf{e}_{k+1}^-)^T \right] \mathbf{H}^T + \mathbb{E}\left[ \mathbf{v}_{k+1} \mathbf{v}_{k+1}^T \right]
+	\end{align}
+	
+	By substituting the prior error covariance matrix $\mathbf{P}_{k+1}^- = \mathbb{E}\left[ \mathbf{e}_{k+1}^- (\mathbf{e}_{k+1}^-)^T \right]$ and the measurement noise covariance matrix $\mathbf{R}_{k+1} = \mathbb{E}\left[ \mathbf{v}_{k+1} \mathbf{v}_{k+1}^T \right]$, we arrive at:
+	
+	\begin{equation}
+		\mathbf{S}_{k+1} = \mathbf{H} \mathbf{P}_{k+1}^- \mathbf{H}^T + \mathbf{R}_{k+1}
+		\label{eq:innovation_covariance}
+	\end{equation}
+	
+	
+
+	\subsubsection*{Example: Mapping State to Measurement space}
 	
 	Consider a system tracking 2D position and velocity, where the full state vector is defined as:
 	\begin{equation*}
@@ -264,30 +295,36 @@
 	
 	\subsection{Kalman Gain}
 	
-	Having computed the measurement residual, we must update the \emph{a priori} state estimate $\hat{\mathbf{x}}_{k+1}^-$ to obtain the \emph{a posteriori} estimate $\hat{\mathbf{x}}_{k+1}^+$. The central challenge in state estimation is determining the optimal weighting between prediction and observation: should we trust the mathematical model or the sensor data more?
+	Having computed the measurement residual $\mathbf{y}_{k+1}$ and its covariance matrix $\mathbf{S}_{k+1}$, we must update the \emph{a priori} state estimate $\hat{\mathbf{x}}_{k+1}^-$ to obtain the \emph{a posteriori} estimate $\hat{\mathbf{x}}_{k+1}^+$. The central challenge in state estimation is determining the optimal weighting between prediction and observation: balancing trust between the mathematical model and the incoming sensor data.
 	
-	This tradeoff is governed by the \emph{Kalman gain} matrix $\mathbf{K}$, computed as:
+	This trade-off is governed by the \emph{Kalman gain} matrix $\mathbf{K}$:
 	
 	\begin{equation}
-		\mathbf{K} = \mathbf{P}_{k+1}^{-} \mathbf{H}^T \left( \mathbf{H} \mathbf{P}_{k+1}^{-} \mathbf{H}^T + \mathbf{R} \right)^{-1}
+		\mathbf{K} = \mathbf{P}_{k+1}^{-} \mathbf{H}^T \mathbf{S}_{k+1}^{-1}
 		\label{eq:kalman_gain}
 	\end{equation}
 	
 	\noindent where:
+	\begin{equation}
+		\mathbf{S}_{k+1} = \mathbf{H} \mathbf{P}_{k+1}^{-} \mathbf{H}^T + \mathbf{R}_{k+1}
+		\label{eq:innovation_covariance_ref}
+	\end{equation}
+	
+	\noindent Here:
 	\begin{itemize}
 		\item $\mathbf{P}_{k+1}^-$ is the \emph{a priori} error covariance matrix, quantifying the expected uncertainty and correlations among errors in the predicted state estimate.
-		\item $\mathbf{R}$ is the measurement noise covariance matrix, representing the inherent variance and noise characteristics of the physical sensors.
-		\item $\mathbf{H}$ is the measurement matrix mapping state space into measurement space.
+		\item $\mathbf{S}_{k+1}$ is the innovation (or residual) covariance matrix, representing the total uncertainty of the measurement residual, combining both projected state uncertainty and sensor noise.
+		\item $\mathbf{R}_{k+1}$ is the measurement noise covariance matrix, representing the variance and noise characteristics of the physical sensors.
+		\item $\mathbf{H}$ is the observation matrix mapping state space into measurement space.
 	\end{itemize}
 	
-	\noindent By comparing $\mathbf{P}_{k+1}^-$ against $\mathbf{R}$, the Kalman gain dynamically scales the correction factor:
+	\noindent By comparing projected state uncertainty against total innovation variance via $\mathbf{S}_{k+1}$, the Kalman gain dynamically scales the state update:
 	\begin{itemize}
-		\item If sensor noise is high relative to state uncertainty ($\mathbf{R} \gg \mathbf{H} \mathbf{P}_{k+1}^- \mathbf{H}^T$), $\mathbf{K}$ approaches zero, causing the filter to heavily weight the prior state prediction.
-		\item If sensor noise is very low ($\mathbf{R} \to \mathbf{0}$), $\mathbf{K}$ increases, forcing the updated state to rely almost entirely on the incoming sensor measurement.
+		\item If sensor noise is dominant ($\mathbf{R}_{k+1} \gg \mathbf{H} \mathbf{P}_{k+1}^- \mathbf{H}^T$), the innovation covariance becomes large ($\mathbf{S}_{k+1} \approx \mathbf{R}_{k+1}$), driving $\mathbf{K} \to \mathbf{0}$. The filter ignores noisy measurements and heavily weights the model prediction.
+		\item If sensor noise is negligible ($\mathbf{R}_{k+1} \to \mathbf{0}$), the innovation uncertainty reduces to $\mathbf{S}_{k+1} \approx \mathbf{H} \mathbf{P}_{k+1}^- \mathbf{H}^T$. Consequently, $\mathbf{K}$ increases, forcing the updated state to rely predominantly on the incoming sensor measurement.
 	\end{itemize}
 	
-	\noindent While the complete mathematical derivation is omitted here, the Kalman gain is mathematically optimal. Selecting $\mathbf{K}$ according to Equation~\ref{eq:kalman_gain} minimizes the trace of the \emph{a posteriori} error covariance matrix $\mathbf{P}_{k+1}^+$, which corresponds to minimizing the total variance of the error in the state estimate.
-	
+	\noindent Selecting $\mathbf{K}$ according to Equation~\ref{eq:kalman_gain} is mathematically optimal: it minimizes the trace of the \emph{a posteriori} error covariance matrix $\mathbf{P}_{k+1}^+$, which corresponds to minimizing the mean-square error of the state estimate.	
 	
 	\section{Covariance Update}
 	
@@ -474,7 +511,125 @@
 	\end{equation}
 	
 	With $\mathbf{F}$, $\mathbf{B}$, $\mathbf{Q}$, $\mathbf{H}$, $\mathbf{R}$, $\hat{\mathbf{x}}_0^+$, and $\mathbf{P}_0^+$ fully specified, the filter executes sequentially across discrete time steps via the prediction and update equations derived in Sections 2 and 3.
-		
+	
+	\section{Extended Kalman Filter}
+	
+	In the previous section, the linear Kalman filter was introduced under the assumption of linear system dynamics and measurement models. However, physical systems encountered in practice are frequently non-linear, evolving according to:
+	
+	\begin{equation}
+		\mathbf{x}_{k+1} = f(\mathbf{x}_k, \mathbf{u}_k) + \mathbf{w}_k
+	\end{equation}
+	
+	where $f$ represents the non-linear state transition function, $\mathbf{u}_k$ is the control input, and $\mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$ denotes additive process noise. Similarly, measurements are modeled as:
+	
+	\begin{equation}
+		\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k
+	\end{equation}
+	
+	where $h$ is the non-linear measurement function and $\mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$ is additive measurement noise.
+	
+	The Extended Kalman Filter (EKF) operates on a recursive **predict-correct** cycle:
+	\begin{enumerate}
+		\item \textbf{Prediction Step:} The filter uses the non-linear model $f$ to project the state forward in time, while linearizing $f$ via its Jacobian $\mathbf{F}_k$ to propagate error covariance.
+		\item \textbf{Correction (Update) Step:} Upon receiving a sensor measurement, the filter compares the actual reading with a predicted measurement generated by $h$. It linearizes $h$ via its Jacobian $\mathbf{H}_{k+1}$ to evaluate the innovation covariance, computes an optimal Kalman gain, and applies a correction to refine both the state estimate and its uncertainty.
+	\end{enumerate}
+	
+	\subsection{State Prediction Linearization}
+	
+	Because non-linear transformations do not generally preserve Gaussian distributions, covariance cannot be propagated directly through $f$. The EKF addresses this by linearizing the non-linear dynamics around the current state estimate using a first-order Taylor series expansion.
+	
+	First, the nominal state estimate is propagated forward directly through the non-linear state transition function:
+	
+	\begin{equation}
+		\label{eq:state_propagation_non_linear}
+		\hat{\mathbf{x}}_{k+1}^- = f(\hat{\mathbf{x}}_k^+, \mathbf{u}_k)
+	\end{equation}
+	
+	where $\hat{\mathbf{x}}_k^+$ represents the \emph{a posteriori} state estimate at step $k$. Expanding $f(\mathbf{x}_k, \mathbf{u}_k)$ around $\hat{\mathbf{x}}_k^+$ yields:
+	
+	\begin{equation}
+		\label{eq:taylor_expansion}
+		f(\mathbf{x}_k, \mathbf{u}_k) \approx f(\hat{\mathbf{x}}_k^+, \mathbf{u}_k) + \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k} (\mathbf{x}_k - \hat{\mathbf{x}}_k^+)
+	\end{equation}
+	
+	Defining the \emph{a posteriori} estimation error as $\mathbf{e}_k^+ = \mathbf{x}_k - \hat{\mathbf{x}}_k^+$ and substituting Equation~\ref{eq:state_propagation_non_linear} into the true state evolution gives the linearized error dynamics:
+	
+	\begin{equation}
+		\mathbf{x}_{k+1} \approx \hat{\mathbf{x}}_{k+1}^- + \mathbf{F}_k \mathbf{e}_k^+ + \mathbf{w}_k
+	\end{equation}
+	
+	where $\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k}$ is the state transition Jacobian matrix evaluated at the \emph{a posteriori} estimate $\hat{\mathbf{x}}_k^+$. 
+	
+	Subtracting $\hat{\mathbf{x}}_{k+1}^-$ from both sides gives the linear propagation of the \emph{a priori} estimation error $\mathbf{e}_{k+1}^- = \mathbf{x}_{k+1} - \hat{\mathbf{x}}_{k+1}^-$:
+	
+	\begin{equation}
+		\mathbf{e}_{k+1}^- \approx \mathbf{F}_k \mathbf{e}_k^+ + \mathbf{w}_k
+	\end{equation}
+	
+	This linearized error propagation allows the \emph{a priori} error covariance $\mathbf{P}_{k+1}^-$ to be predicted via:
+	
+	\begin{equation}
+		\mathbf{P}_{k+1}^- = \mathbf{F}_k \mathbf{P}_k^+ \mathbf{F}_k^\top + \mathbf{Q}_k
+	\end{equation}
+	
+	\subsection{Innovation Covariance Linearization}
+	
+	At step $k+1$, incoming measurements are modeled through the non-linear observation function:
+	
+	\begin{equation}
+		\mathbf{z}_{k+1} = h(\mathbf{x}_{k+1}) + \mathbf{v}_{k+1}
+	\end{equation}
+	
+	where $\mathbf{v}_{k+1} \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_{k+1})$ represents zero-mean measurement noise with covariance matrix $\mathbf{R}_{k+1}$.
+	
+	To perform the measurement update, $h(\mathbf{x}_{k+1})$ is linearized via a first-order Taylor series expansion about the predicted state estimate $\hat{\mathbf{x}}_{k+1}^-$:
+	
+	\begin{equation}
+		h(\mathbf{x}_{k+1}) \approx h(\hat{\mathbf{x}}_{k+1}^-) + \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}^-} (\mathbf{x}_{k+1} - \hat{\mathbf{x}}_{k+1}^-)
+	\end{equation}
+	
+	Defining the measurement Jacobian matrix $\mathbf{H}_{k+1}$ as:
+	
+	\begin{equation}
+		\mathbf{H}_{k+1} = \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}^-}
+	\end{equation}
+	
+	the measurement residual (or innovation) $\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - h(\hat{\mathbf{x}}_{k+1}^-)$ quantifies the discrepancy between actual sensor readings and expected observations:
+	
+	\begin{equation}
+		\mathbf{y}_{k+1} \approx \mathbf{H}_{k+1} \mathbf{e}_{k+1}^- + \mathbf{v}_{k+1}
+	\end{equation}
+	
+	The innovation covariance matrix $\mathbf{S}_{k+1} = \mathbb{E}[\mathbf{y}_{k+1} \mathbf{y}_{k+1}^\top]$, which represents the total uncertainty of the residual by combining state projection uncertainty and sensor noise, is evaluated as:
+	
+	\begin{equation}
+		\mathbf{S}_{k+1} = \mathbf{H}_{k+1} \mathbf{P}_{k+1}^- \mathbf{H}_{k+1}^\top + \mathbf{R}_{k+1}
+		\label{eq:ekf_innovation_covariance}
+	\end{equation}
+	
+	\subsection{State and Covariance Correction (Update)}
+	
+	Once the measurement residual $\mathbf{y}_{k+1}$ and innovation covariance $\mathbf{S}_{k+1}$ are established, the filter updates both the state estimate and its error covariance. 
+	
+	First, the optimal Kalman gain matrix $\mathbf{K}_{k+1}$ is computed. It balances model uncertainty against sensor uncertainty by determining how strongly the measurement residual should influence the prior state estimate:
+	
+	\begin{equation}
+		\mathbf{K}_{k+1} = \mathbf{P}_{k+1}^- \mathbf{H}_{k+1}^\top \mathbf{S}_{k+1}^{-1}
+	\end{equation}
+	
+	The state vector is then updated by scaling the measurement residual $\mathbf{y}_{k+1}$ by the Kalman gain and adding it to the \emph{a priori} state estimate $\hat{\mathbf{x}}_{k+1}^-$:
+	
+	\begin{equation}
+		\hat{\mathbf{x}}_{k+1}^+ = \hat{\mathbf{x}}_{k+1}^- + \mathbf{K}_{k+1} \mathbf{y}_{k+1}
+	\end{equation}
+	
+	Because incorporating new sensor data reduces uncertainty, the error covariance matrix is updated to yield the \emph{a posteriori} covariance $\mathbf{P}_{k+1}^+$:
+	
+	\begin{equation}
+		\mathbf{P}_{k+1}^+ = (\mathbf{I} - \mathbf{K}_{k+1} \mathbf{H}_{k+1}) \mathbf{P}_{k+1}^-
+	\end{equation}
+	
+	This completes the recursive iteration at step $k+1$, producing optimal \emph{a posteriori} estimates $\hat{\mathbf{x}}_{k+1}^+$ and $\mathbf{P}_{k+1}^+$ that serve as inputs for the next time step.
 	
 	
 \end{document}
