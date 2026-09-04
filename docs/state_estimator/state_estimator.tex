@@ -528,14 +528,13 @@
 	
 	where $h(\cdot)$ is the non-linear measurement function and $\mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$ represents additive, zero-mean Gaussian measurement noise.
 	
-	To handle non-linear manifold topologies—such as 3D rotations—and improve numerical stability, the Error-State Kalman Filter (ESKF) decouples the true state $\mathbf{x}$ into a large-signal **nominal state** $\hat{\mathbf{x}}$ and a small-signal **error state** $\delta\mathbf{x}$:
+	To handle non-linear functions the Error-State Kalman Filter (ESKF) decouples the true state $\mathbf{x}$ into a large-signal \textbf{nominal state} $\hat{\mathbf{x}}$ and a small \textbf{error state} $\delta\mathbf{x}$:
 	
 	\begin{equation}
-		\mathbf{x} = \hat{\mathbf{x}} \oplus \delta\mathbf{x}
+		\mathbf{x} = \hat{\mathbf{x}} + \delta\mathbf{x}
 	\end{equation}
 	
-	where $\oplus$ denotes a generalized composition operator (e.g., standard addition for vector spaces or quaternion multiplication for rotations).
-	
+
 	The ESKF operates recursively through the following four-step loop:
 	\begin{enumerate}
 		\item \textbf{Nominal State Propagation:} Integrate the non-linear system dynamics to propagate the nominal state forward in time, assuming zero noise.
@@ -603,48 +602,47 @@
 	
 	Consequently, the propagation step focuses entirely on tracking how the error covariance—the uncertainty and cross-correlations—evolves as the state evolves through the system dynamics.
 	
-	\subsubsection{Measurement Residual}
+	\subsubsection{Measurement Residual and Innovation}
 	
-	The residual is computed as:
-	\begin{equation*}
-		y = \mathbf{z}_{k+1} - \mathbf{\hat{z}}_{k+1}
-	\end{equation*}
-	Where $\mathbf{z}_{k+1}$ is the physical measurement we make. The mapping to the state space is described using the non-linear measurement equation $h$:
-	\begin{equation*}
-		\mathbf{z}_{k+1} = h(x_{k+1}) + v_{k+1}
-	\end{equation*}
-	$v_{k+1}$ is some zero mean noise which is added as the measurement of the state is not perfect.
-	
-	
-	We can think of $\mathbf{\hat{z}}_{k+1}$ as the measurement we would make given the state $\hat{x}_{k+1}$. We can also compute $\mathbf{\hat{z}}_{k+1}$ using the non-linear 
-	measurement equation $h$:
-	\begin{equation*}
- 		\mathbf{\hat{z}}_{k+1} = h(\hat{x}_{k+1})
-	\end{equation*}
-	
-	Substitution leads us to the equation we can use to compute the value of the residual:
-	\begin{equation*}
-		y = \mathbf{\hat{z}}_{k+1} - h(\hat{x}_{k+1})
-	\end{equation*}
-	
-	Now that we know the value of the residual an important metric we need too know is the uncertainty of the residual. Recall the Kalman gain is a weighting matrix identyfing if we need too trust the model or the measurements more. Its main inputs are the model uncertainty (identified by P). Too obtain this uncertainty we will approximate the non-linear residual function (PUT reference here) with a first order Taylor series expansion.	
-	
-	When a new measurement $\mathbf{z}_{k+1}$ arrives, the measurement function $h(\mathbf{x}_{k+1})$ is linearized around the propagated nominal state $\hat{\mathbf{x}}_{k+1}$ using a first-order Taylor series approximation:
-	
-	\begin{align}
-		\mathbf{z}_{k+1} &= h(\mathbf{x}_{k+1}) + \mathbf{v}_{k+1} \nonumber \\
-		&= h(\hat{\mathbf{x}}_{k+1} + \delta\mathbf{x}_{k+1}) + \mathbf{v}_{k+1} \nonumber \\
-		&\approx h(\hat{\mathbf{x}}_{k+1}) + \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1} \\
-		&\approx h(\hat{\mathbf{x}}_{k+1}) + \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
-	\end{align}
-	
-	Defining the measurement Jacobian matrix as $\mathbf{H}_{k+1} = \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}}$, the measurement residual (or innovation) $\mathbf{y}_{k+1}$ represents the discrepancy between the physical observation and the predicted nominal measurement:
+	When a sensor observation arrives, the measurement residual (or innovation) $\mathbf{y}_{k+1}$ measures the discrepancy between the physical observation $\mathbf{z}_{k+1}$ and the expected observation $\hat{\mathbf{z}}_{k+1}$:
 	
 	\begin{equation}
-		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - h(\hat{\mathbf{x}}_{k+1}) \approx \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
+		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - \hat{\mathbf{z}}_{k+1}
 	\end{equation}
 	
-	Please note we can compute the actual residual by doing 
+	The real physical measurement is modeled via the non-linear measurement function $h(\cdot)$ perturbed by zero-mean measurement noise $\mathbf{v}_{k+1} \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_{k+1})$:
+	
+	\begin{equation}
+		\mathbf{z}_{k+1} = h(\mathbf{x}_{k+1}) + \mathbf{v}_{k+1}
+	\end{equation}
+	
+	Similarly, the predicted measurement $\hat{\mathbf{z}}_{k+1}$ is computed by passing the propagated nominal state $\hat{\mathbf{x}}_{k+1}$ through the same non-linear mapping:
+	
+	\begin{equation}
+		\hat{\mathbf{z}}_{k+1} = h(\hat{\mathbf{x}}_{k+1})
+	\end{equation}
+	
+	Direct substitution yields the actionable form of the measurement residual:
+	
+	\begin{equation}
+		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - h(\hat{\mathbf{x}}_{k+1})
+	\end{equation}
+	
+	To compute the optimal Kalman gain—which balances reliance between the system model and sensor data—we must determine the uncertainty associated with this residual. Expressing the true state as $\mathbf{x}_{k+1} = \hat{\mathbf{x}}_{k+1} + \delta\mathbf{x}_{k+1}$ and expanding $h(\cdot)$ using a first-order Taylor series around the nominal state gives:
+	
+	\begin{align}
+		\mathbf{z}_{k+1} &= h(\hat{\mathbf{x}}_{k+1} + \delta\mathbf{x}_{k+1}) + \mathbf{v}_{k+1} \nonumber \\
+		&\approx h(\hat{\mathbf{x}}_{k+1}) + \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1} \nonumber \\
+		&= h(\hat{\mathbf{x}}_{k+1}) + \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
+	\end{align}
+	
+	where $\mathbf{H}_{k+1} = \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}}$ is the measurement Jacobian matrix evaluated at the propagated nominal state. Substituting this linearized approximation into the residual expression yields:
+	
+	\begin{equation}
+		\mathbf{y}_{k+1} \approx \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
+	\end{equation}
+	
+	The residual uncertainty (innovation covariance $\mathbf{S}_{k+1}$) is computed using following equations:
 	
 	\begin{align}
 		\mathbf{S}_{k+1} &= \mathbb{E}\left[ \mathbf{y}_{k+1} \mathbf{y}_{k+1}^T \right] \nonumber \\
@@ -652,13 +650,41 @@
 		&= \mathbf{H}_{k+1} \mathbf{P}_{k+1} \mathbf{H}_{k+1}^T + \mathbf{R}_{k+1}
 	\end{align}
 	
-	Finally, the optimal Kalman gain $\mathbf{K}_{k+1}$ is computed to weigh the innovation when estimating the error state:
+	
+	\subsubsection{Kalman gain}
+	The Kalman gain is computed exactly the same as in the regular linear Kalman filter:
 	
 	\begin{equation}
 		\mathbf{K}_{k+1} = \mathbf{P}_{k+1} \mathbf{H}_{k+1}^T \mathbf{S}_{k+1}^{-1}
 	\end{equation}
 	
+	\subsection{State Injection}
+	After estimating the error state $\delta\mathbf{x}_k$ via the Kalman gain, it is injected into the nominal state estimate to yield the updated state $\hat{\mathbf{x}}_{k+1}$. Depending on the manifold or parameterization of each state element, injection uses standard addition or generalized composition operators (such as quaternion multiplication for rotations):
 	
-
+	\begin{equation}
+		\hat{\mathbf{x}}_{k+1} = \hat{\mathbf{x}}_k \oplus \delta\mathbf{x}_k
+	\end{equation}
+	
+	For standard linear vector quantities (e.g., position, velocity, and sensor biases), this simplifies to vector addition:
+	
+	\begin{equation}
+		\hat{\mathbf{x}}_{k+1} = \hat{\mathbf{x}}_k + \delta\mathbf{x}_k
+	\end{equation}
+	
+	\subsection{Error covariance update}
+	Just as before since we have fused measurement and model predictions optimally using the Kalman gain the overall covariance of the error shoudl have dropped. Just like before we can update it with:
+	
+	\begin{equation}
+		\mathbf{P}_{k+1}^+ = (\mathbf{I} - \mathbf{K} \mathbf{H}) \mathbf{P}_{k+1}^-
+		\label{eq:cov_update}
+	\end{equation}
+	
+	\subsection{Error-State Reset}
+	Once the estimated error state has been injected into the nominal state, the expected error is assumed to be fully absorbed. Consequently, the mean of the error state is reset to zero before starting the next iteration:
+	
+	\begin{equation}
+		\delta\mathbf{x}_k \leftarrow \mathbf{0}
+	\end{equation}
+	
 	
 \end{document}
