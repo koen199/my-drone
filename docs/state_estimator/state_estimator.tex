@@ -528,27 +528,26 @@
 	
 	where $h(\cdot)$ is the non-linear measurement function and $\mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$ represents additive, zero-mean Gaussian measurement noise.
 	
-	To handle non-linear functions the Error-State Kalman Filter (ESKF) decouples the true state $\mathbf{x}$ into a large-signal \textbf{nominal state} $\hat{\mathbf{x}}$ and a small \textbf{error state} $\delta\mathbf{x}$:
+	To handle non-linear functions, the Error-State Kalman Filter (ESKF) decouples the true state $\mathbf{x}$ into a large-signal \textbf{nominal state} $\hat{\mathbf{x}}$ and a small \textbf{error state} $\delta\mathbf{x}$:
 	
 	\begin{equation}
 		\mathbf{x} = \hat{\mathbf{x}} + \delta\mathbf{x}
 	\end{equation}
 	
-
 	The ESKF operates recursively through the following four-step loop:
 	\begin{enumerate}
 		\item \textbf{Nominal State Propagation:} Integrate the non-linear system dynamics to propagate the nominal state forward in time, assuming zero noise.
-		\item \textbf{Error Estimation:} Predict the growth of error uncertainty and estimate the optimal error state $\delta\hat{\mathbf{x}}$ using incoming measurements.
-		\item \textbf{State Injection (Correction):} Combine the estimated error state with the nominal state to update the true state estimate.
-		\item \textbf{Error Reset:} Inject the error into the nominal state, reset the error state to zero, and update the error covariance matrix accordingly.
+		\item \textbf{Error State Estimation:} Predict the growth of error uncertainty, compute the Kalman gain using incoming measurements, and estimate the optimal error state $\delta\hat{\mathbf{x}}_{k+1}$.
+		\item \textbf{State Injection (Correction):} Combine the estimated error state with the nominal state to update the true nominal state estimate, and update the error covariance matrix.
+		\item \textbf{Error Reset:} Reset the expected error state to zero for the next filter iteration.
 	\end{enumerate}
 	
 	\subsection{Nominal State Propagation}
 	
-	Since we know the non-linear dynamics function $f(\cdot)$ we can just propagate the nominal state forward:
+	Since the non-linear dynamics function $f(\cdot)$ is known, the nominal state can be propagated forward in time as:
 	
 	\begin{equation}
-		\hat{\mathbf{x}}_{k+1} = f(\hat{\mathbf{x}}_k, \mathbf{u}_k)
+		\hat{\mathbf{x}}_{k+1}^- = f(\hat{\mathbf{x}}_k^+, \mathbf{u}_k)
 	\end{equation}
 	
 	\subsection{Error State Estimation}
@@ -561,37 +560,37 @@
 	
 	where $\mathbf{y}_{k+1}$ is the measurement residual and $\mathbf{K}$ is the Kalman gain matrix. The Kalman gain balances uncertainty between the propagated model dynamics and the sensor measurements. Its main components for the computation are:
 	\begin{itemize}
-		\item The uncertainty of the error state propagation, represented by the error covariance matrix $\mathbf{P}$.
-		\item The noise characteristics of the physical sensor, represented by the measurement covariance matrix $\mathbf{R}$.
+		\item The uncertainty of the error state propagation, represented by the prior error covariance matrix $\mathbf{P}_{k+1}^-$.
+		\item The noise characteristics of the physical sensor, represented by the measurement noise covariance matrix $\mathbf{R}_{k+1}$.
 	\end{itemize}
 	
 	\subsubsection{Propagation of Error Uncertainty}
 	
 	Although the estimated error vector $\delta\hat{\mathbf{x}}_k$ is reset to zero after each injection step, its associated covariance matrix $\mathbf{P}_k$ continues to grow during prediction due to process noise.
 	
-	To derive the propagation of the error state, we expand the non-linear process model $f(\mathbf{x}_k, \mathbf{u}_k)$ around the nominal state $\hat{\mathbf{x}}_k$ using a first-order Taylor series approximation:
+	To derive the propagation of the error state, we expand the non-linear process model $f(\mathbf{x}_k, \mathbf{u}_k)$ around the nominal state $\hat{\mathbf{x}}_k^+$ using a first-order Taylor series approximation:
 	
 	\begin{align}
 		\mathbf{x}_{k+1} &= f(\mathbf{x}_k, \mathbf{u}_k) + \mathbf{w}_k \nonumber \\
-		\hat{\mathbf{x}}_{k+1} + \delta\mathbf{x}_{k+1} &= f(\hat{\mathbf{x}}_k + \delta\mathbf{x}_k, \mathbf{u}_k) + \mathbf{w}_k \nonumber \\
-		&\approx f(\hat{\mathbf{x}}_k, \mathbf{u}_k) + \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k, \mathbf{u}_k} \delta\mathbf{x}_k + \mathbf{w}_k \\
-		&\approx f(\hat{\mathbf{x}}_k, \mathbf{u}_k) + \mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k
+		\hat{\mathbf{x}}_{k+1}^- + \delta\mathbf{x}_{k+1} &= f(\hat{\mathbf{x}}_k^+ + \delta\mathbf{x}_k, \mathbf{u}_k) + \mathbf{w}_k \nonumber \\
+		&\approx f(\hat{\mathbf{x}}_k^+, \mathbf{u}_k) + \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k} \delta\mathbf{x}_k + \mathbf{w}_k \\
+		&\approx \hat{\mathbf{x}}_{k+1}^- + \mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k
 	\end{align}
 	
-	Subtracting the nominal state propagation $\hat{\mathbf{x}}_{k+1} = f(\hat{\mathbf{x}}_k, \mathbf{u}_k)$ from both sides yields the linearized error dynamics:
+	Subtracting the nominal state propagation $\hat{\mathbf{x}}_{k+1}^- = f(\hat{\mathbf{x}}_k^+, \mathbf{u}_k)$ yields the linearized error dynamics:
 	
 	\begin{equation}
 		\delta\mathbf{x}_{k+1} \approx \mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k
 	\end{equation}
 	
-	where $\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k, \mathbf{u}_k}$ is the error transition Jacobian matrix evaluated at the current nominal estimate.
+	where $\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k}$ is the error transition Jacobian matrix evaluated at the current nominal estimate.
 	
-	We can now propagate the error uncertainty forward:
+	The prior error covariance is then propagated forward in time:
 	
 	\begin{align}
-		\mathbf{P}_{k+1} &= \mathbb{E}\left[ \delta\mathbf{x}_{k+1} \delta\mathbf{x}_{k+1}^T \right] \nonumber \\
+		\mathbf{P}_{k+1}^- &= \mathbb{E}\left[ \delta\mathbf{x}_{k+1} \delta\mathbf{x}_{k+1}^T \right] \nonumber \\
 		&= \mathbb{E}\left[ (\mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k)(\mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k)^T \right] \nonumber \\
-		&= \mathbf{F}_k \mathbf{P}_k \mathbf{F}_k^T + \mathbf{Q}_k
+		&= \mathbf{F}_k \mathbf{P}_k^+ \mathbf{F}_k^T + \mathbf{Q}_k
 	\end{align}
 	
 	The key advantage of this formulation is that the predicted mean error $\delta\mathbf{x}_{k+1}$ does not need to be explicitly propagated. Because the error state is assumed to be zero-mean, its expectation under the linearized dynamics remains zero:
@@ -600,7 +599,7 @@
 		\mathbb{E}[\delta\mathbf{x}_{k+1}] = \mathbb{E}[\mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k] = \mathbf{F}_k \mathbb{E}[\delta\mathbf{x}_k] + \mathbb{E}[\mathbf{w}_k] = \mathbf{0}
 	\end{equation}
 	
-	Consequently, the propagation step focuses entirely on tracking how the error covariance—the uncertainty and cross-correlations—evolves as the state evolves through the system dynamics.
+	Consequently, the propagation step focuses entirely on tracking how the error covariance—the uncertainty and cross-correlations—evolves through the system dynamics.
 	
 	\subsubsection{Measurement Residual and Innovation}
 	
@@ -616,75 +615,139 @@
 		\mathbf{z}_{k+1} = h(\mathbf{x}_{k+1}) + \mathbf{v}_{k+1}
 	\end{equation}
 	
-	Similarly, the predicted measurement $\hat{\mathbf{z}}_{k+1}$ is computed by passing the propagated nominal state $\hat{\mathbf{x}}_{k+1}$ through the same non-linear mapping:
+	Similarly, the predicted measurement $\hat{\mathbf{z}}_{k+1}$ is computed by passing the propagated nominal state $\hat{\mathbf{x}}_{k+1}^-$ through the same non-linear mapping:
 	
 	\begin{equation}
-		\hat{\mathbf{z}}_{k+1} = h(\hat{\mathbf{x}}_{k+1})
+		\hat{\mathbf{z}}_{k+1} = h(\hat{\mathbf{x}}_{k+1}^-)
 	\end{equation}
 	
 	Direct substitution yields the actionable form of the measurement residual:
 	
 	\begin{equation}
-		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - h(\hat{\mathbf{x}}_{k+1})
+		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - h(\hat{\mathbf{x}}_{k+1}^-)
 	\end{equation}
 	
-	To compute the optimal Kalman gain—which balances reliance between the system model and sensor data—we must determine the uncertainty associated with this residual. Expressing the true state as $\mathbf{x}_{k+1} = \hat{\mathbf{x}}_{k+1} + \delta\mathbf{x}_{k+1}$ and expanding $h(\cdot)$ using a first-order Taylor series around the nominal state gives:
+	To compute the optimal Kalman gain, the uncertainty associated with this residual must be determined. Expressing the true state as $\mathbf{x}_{k+1} = \hat{\mathbf{x}}_{k+1}^- + \delta\mathbf{x}_{k+1}$ and expanding $h(\cdot)$ using a first-order Taylor series around the propagated nominal state gives:
 	
 	\begin{align}
-		\mathbf{z}_{k+1} &= h(\hat{\mathbf{x}}_{k+1} + \delta\mathbf{x}_{k+1}) + \mathbf{v}_{k+1} \nonumber \\
-		&\approx h(\hat{\mathbf{x}}_{k+1}) + \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1} \nonumber \\
-		&= h(\hat{\mathbf{x}}_{k+1}) + \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
+		\mathbf{z}_{k+1} &= h(\hat{\mathbf{x}}_{k+1}^- + \delta\mathbf{x}_{k+1}) + \mathbf{v}_{k+1} \nonumber \\
+		&\approx h(\hat{\mathbf{x}}_{k+1}^-) + \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}^-} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1} \nonumber \\
+		&= h(\hat{\mathbf{x}}_{k+1}^-) + \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
 	\end{align}
 	
-	where $\mathbf{H}_{k+1} = \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}}$ is the measurement Jacobian matrix evaluated at the propagated nominal state. Substituting this linearized approximation into the residual expression yields:
+	where $\mathbf{H}_{k+1} = \left. \frac{\partial h}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_{k+1}^-}$ is the measurement Jacobian matrix evaluated at the propagated nominal state. Substituting this linearized approximation into the residual expression yields:
 	
 	\begin{equation}
 		\mathbf{y}_{k+1} \approx \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
 	\end{equation}
 	
-	The residual uncertainty (innovation covariance $\mathbf{S}_{k+1}$) is computed using following equations:
+	The residual uncertainty (innovation covariance $\mathbf{S}_{k+1}$) is computed as:
 	
 	\begin{align}
 		\mathbf{S}_{k+1} &= \mathbb{E}\left[ \mathbf{y}_{k+1} \mathbf{y}_{k+1}^T \right] \nonumber \\
 		&= \mathbb{E}\left[ (\mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1})(\mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1})^T \right] \nonumber \\
-		&= \mathbf{H}_{k+1} \mathbf{P}_{k+1} \mathbf{H}_{k+1}^T + \mathbf{R}_{k+1}
+		&= \mathbf{H}_{k+1} \mathbf{P}_{k+1}^- \mathbf{H}_{k+1}^T + \mathbf{R}_{k+1}
 	\end{align}
 	
+	\subsubsection{Kalman Gain}
 	
-	\subsubsection{Kalman gain}
-	The Kalman gain is computed exactly the same as in the regular linear Kalman filter:
+	The Kalman gain matrix $\mathbf{K}$ is computed as:
 	
 	\begin{equation}
-		\mathbf{K}_{k+1} = \mathbf{P}_{k+1} \mathbf{H}_{k+1}^T \mathbf{S}_{k+1}^{-1}
+		\mathbf{K} = \mathbf{P}_{k+1}^- \mathbf{H}_{k+1}^T \mathbf{S}_{k+1}^{-1}
 	\end{equation}
 	
 	\subsection{State Injection}
-	After estimating the error state $\delta\mathbf{x}_k$ via the Kalman gain, it is injected into the nominal state estimate to yield the updated state $\hat{\mathbf{x}}_{k+1}$. Depending on the manifold or parameterization of each state element, injection uses standard addition or generalized composition operators (such as quaternion multiplication for rotations):
+	
+	After estimating the error state $\delta\hat{\mathbf{x}}_{k+1}$ via the Kalman gain, it is injected into the propagated nominal state estimate to yield the updated posterior nominal state $\hat{\mathbf{x}}_{k+1}^+$ using vector addition:
 	
 	\begin{equation}
-		\hat{\mathbf{x}}_{k+1} = \hat{\mathbf{x}}_k \oplus \delta\mathbf{x}_k
+		\hat{\mathbf{x}}_{k+1}^+ = \hat{\mathbf{x}}_{k+1}^- + \delta\hat{\mathbf{x}}_{k+1}
 	\end{equation}
 	
-	For standard linear vector quantities (e.g., position, velocity, and sensor biases), this simplifies to vector addition:
+	\subsection{Error Covariance Update}
+	
+	Having optimally fused the measurement and model prediction using the Kalman gain, the posterior error covariance $\mathbf{P}_{k+1}^+$ is updated as:
 	
 	\begin{equation}
-		\hat{\mathbf{x}}_{k+1} = \hat{\mathbf{x}}_k + \delta\mathbf{x}_k
-	\end{equation}
-	
-	\subsection{Error covariance update}
-	Just as before since we have fused measurement and model predictions optimally using the Kalman gain the overall covariance of the error shoudl have dropped. Just like before we can update it with:
-	
-	\begin{equation}
-		\mathbf{P}_{k+1}^+ = (\mathbf{I} - \mathbf{K} \mathbf{H}) \mathbf{P}_{k+1}^-
+		\mathbf{P}_{k+1}^+ = (\mathbf{I} - \mathbf{K} \mathbf{H}_{k+1}) \mathbf{P}_{k+1}^-
 		\label{eq:cov_update}
 	\end{equation}
 	
 	\subsection{Error-State Reset}
-	Once the estimated error state has been injected into the nominal state, the expected error is assumed to be fully absorbed. Consequently, the mean of the error state is reset to zero before starting the next iteration:
+	
+	Once the estimated error state has been injected into the nominal state, the expected error is assumed to be fully absorbed. Consequently, the mean error state is reset to zero before the next iteration:
 	
 	\begin{equation}
-		\delta\mathbf{x}_k \leftarrow \mathbf{0}
+		\delta\hat{\mathbf{x}}_{k+1} \leftarrow \mathbf{0}
 	\end{equation}
+	
+	\section{Drone State Estimator}
+	
+	The previous sections established the theoretical foundations of the standard and error-state Kalman filters. This section applies these principles directly to our autonomous drone platform, detailing the full system model and tying the estimation pipeline together.
+	
+	Recall that the 16-dimensional true (nominal) state vector $\mathbf{x}$ consists of position, velocity, orientation quaternion, gyroscope bias, and accelerometer bias:
+	\begin{equation*}
+		\mathbf{x} =
+		\begin{bmatrix}
+			\mathbf{p} \\
+			\mathbf{v} \\
+			\mathbf{q} \\
+			\mathbf{b}_g \\
+			\mathbf{b}_a
+		\end{bmatrix}
+	\end{equation*}
+	
+	Because quaternions must maintain a length of 1, they cause mathematical issues in a standard Kalman filter. Instead, we use a 3D rotation vector $\bm{\delta\theta}$ to represent orientation error, giving us a 15-dimensional error state $\delta\mathbf{x}$:
+	\begin{equation*}
+		\delta\mathbf{x} =
+		\begin{bmatrix}
+			\delta\mathbf{p} \\
+			\delta\mathbf{v} \\
+			\bm{\delta\theta} \\
+			\delta\mathbf{b}_g \\
+			\delta\mathbf{b}_a
+		\end{bmatrix}
+	\end{equation*}
+	
+	Once the optimal error state is computed during the measurement update, it is incorporated into the nominal state via state injection:
+	\begin{equation*}
+		\mathbf{x} \leftarrow \mathbf{x} \oplus \delta\mathbf{x}
+	\end{equation*}
+	
+	Here, $\oplus$ denotes the generalized composition operator. While Euclidean components (position, velocity, and sensor biases) propagate using standard vector addition, orientation requires quaternion composition:
+	\begin{equation*}
+		\begin{bmatrix}
+			\mathbf{p} \\
+			\mathbf{v} \\
+			\mathbf{q} \\
+			\mathbf{b}_g \\
+			\mathbf{b}_a
+		\end{bmatrix}
+		\leftarrow
+		\begin{bmatrix}
+			\mathbf{p} + \delta\mathbf{p} \\
+			\mathbf{v} + \delta\mathbf{v} \\
+			\mathbf{q} \otimes \delta\mathbf{q}(\bm{\delta\theta}) \\
+			\mathbf{b}_g + \delta\mathbf{b}_g \\
+			\mathbf{b}_a + \delta\mathbf{b}_a
+		\end{bmatrix}
+	\end{equation*}
+	where $\otimes$ denotes quaternion multiplication and $\delta\mathbf{q}(\bm{\delta\theta}) \approx \begin{bmatrix} 1 & \frac{1}{2}\bm{\delta\theta}^\top \end{bmatrix}^\top$ represents the error quaternion under a small-angle assumption.
+	\vspace{1em}
+	
+	As shown in the previous section we can estimate the linear propagation of the error state using the following relation:
+	\begin{equation*}
+		\delta\mathbf{x}_{k+1} \approx \mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k
+	\end{equation*}
+	Where $\mathbf{F}_k$ is the Jacobian:
+	\begin{equation*}
+		\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k}
+	\end{equation*}
+   
+	
+	
+	
 	
 	
 \end{document}
