@@ -585,6 +585,17 @@
 	
 	where $\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k}$ is the error transition Jacobian matrix evaluated at the current nominal estimate.
 	
+	We know that:
+	\begin{equation*}
+		\frac{\partial f(\mathbf{x})}{\partial \delta\mathbf{x}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \cdot \frac{\partial \mathbf{x}}{\partial \delta\mathbf{x}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \cdot \frac{\partial (\hat{\mathbf{x}} + \delta\mathbf{x})}{\partial \delta\mathbf{x}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \mathbf{I}
+	\end{equation*}
+	
+	This means that:
+	\begin{equation*}
+		\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k} =  \left. \frac{\partial f}{\partial \mathbf{\delta x}} \right|_{\mathbf{\delta x} = 0, \mathbf{u}_k}
+	\end{equation*}
+	We will generally use the last form (w.r.t $\delta x$) too derive $\mathbf{F}_k$
+	
 	The prior error covariance is then propagated forward in time:
 	
 	\begin{align}
