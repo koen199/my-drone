@@ -585,16 +585,19 @@
 	
 	where $\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k}$ is the error transition Jacobian matrix evaluated at the current nominal estimate.
 	
-	We know that:
+	For standard vector spaces with additive state composition ($\mathbf{x} = \hat{\mathbf{x}} + \boldsymbol{\delta\mathbf{x}}$), applying the chain rule yields:
+	
 	\begin{equation*}
-		\frac{\partial f(\mathbf{x})}{\partial \delta\mathbf{x}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \cdot \frac{\partial \mathbf{x}}{\partial \delta\mathbf{x}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \cdot \frac{\partial (\hat{\mathbf{x}} + \delta\mathbf{x})}{\partial \delta\mathbf{x}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \mathbf{I}
+		\frac{\partial f(\mathbf{x})}{\partial \boldsymbol{\delta\mathbf{x}}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \cdot \frac{\partial \mathbf{x}}{\partial \boldsymbol{\delta\mathbf{x}}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \cdot \frac{\partial (\hat{\mathbf{x}} + \boldsymbol{\delta\mathbf{x}})}{\partial \boldsymbol{\delta\mathbf{x}}} = \frac{\partial f(\mathbf{x})}{\partial \mathbf{x}} \mathbf{I}
 	\end{equation*}
 	
-	This means that:
+	This allows the state transition matrix to be expressed equivalently as:
+	
 	\begin{equation*}
-		\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k} =  \left. \frac{\partial f}{\partial \mathbf{\delta x}} \right|_{\mathbf{\delta x} = 0, \mathbf{u}_k}
+		\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k} = \left. \frac{\partial f}{\partial \boldsymbol{\delta\mathbf{x}}} \right|_{\boldsymbol{\delta\mathbf{x}} = \mathbf{0}, \mathbf{u}_k}
 	\end{equation*}
-	We will generally use the last form (w.r.t $\delta x$) too derive $\mathbf{F}_k$
+	
+	Throughout this work, we adopt the latter formulation (differentiating directly with respect to $\boldsymbol{\delta\mathbf{x}}$). While identical in vector spaces, evaluating derivatives directly with respect to the local error state naturally generalizes to non-linear manifolds (e.g., $SO(3)$), where state composition is non-additive ($\mathbf{x} = \hat{\mathbf{x}} \oplus \boldsymbol{\delta\mathbf{x}}$).
 	
 	The prior error covariance is then propagated forward in time:
 	
@@ -692,69 +695,117 @@
 	\begin{equation}
 		\delta\hat{\mathbf{x}}_{k+1} \leftarrow \mathbf{0}
 	\end{equation}
-	
-	\section{Drone State Estimator}
-	
-	The previous sections established the theoretical foundations of the standard and error-state Kalman filters. This section applies these principles directly to our autonomous drone platform, detailing the full system model and tying the estimation pipeline together.
-	
-	Recall that the 16-dimensional true (nominal) state vector $\mathbf{x}$ consists of position, velocity, orientation quaternion, gyroscope bias, and accelerometer bias:
+
+	\subsection{Position Block}
+	Recall the relationship between the true, nominal (estimated), and error states for position and velocity in the world frame ($n$):
 	\begin{equation*}
-		\mathbf{x} =
+		\mathbf{p} = \hat{\mathbf{p}} + \delta\mathbf{p}, \quad \mathbf{v} = \hat{\mathbf{v}} + \delta\mathbf{v}
+	\end{equation*}
+	
+	The kinematically exact discrete updates for both the true position $\mathbf{p}_{k+1}$ and the nominal position $\hat{\mathbf{p}}_{k+1}$ over a sample interval $\Delta t$ are driven by acceleration:
+	\begin{align*}
+		\mathbf{p}_{k+1} &= \mathbf{p}_k + \mathbf{v}_k \Delta t + \mathbf{a}_n \frac{\Delta t^2}{2} \\
+		\hat{\mathbf{p}}_{k+1} &= \hat{\mathbf{p}}_k + \hat{\mathbf{v}}_k \Delta t + \hat{\mathbf{a}}_n \frac{\Delta t^2}{2}
+	\end{align*}
+	where $\mathbf{a}_n$ and $\hat{\mathbf{a}}_n$ represent the true and estimated accelerations expressed in the world frame ($n$), respectively. Subtracting the nominal position update from the true position update yields the exact discrete-time position error propagation:
+	\begin{equation*}
+		\delta\mathbf{p}_{k+1} = \delta\mathbf{p}_k + \delta\mathbf{v}_k \Delta t + \delta\mathbf{a}_n \frac{\Delta t^2}{2}
+	\end{equation*}
+	where $\delta\mathbf{a}_n = \mathbf{a}_n - \hat{\mathbf{a}}_n$ is the acceleration error resulting from orientation mismatches and accelerometer bias.
+	
+	In the standard error-state Kalman filter (ESKF) formulation, the second-order term $\delta\mathbf{a}_n \frac{\Delta t^2}{2}$ is omitted when constructing the continuous-to-discrete system transition matrix $\mathbf{F}_k$ for two reasons:
+	\begin{enumerate}
+		\item \textbf{Order of Integration ($\mathcal{O}(\Delta t^2)$):} Because high-frequency IMU updates run at small sample intervals ($\Delta t \approx$ 1 to 5ms), the term $\frac{\Delta t^2}{2}$ becomes negligible relative to the primary position drift driven by velocity error ($\delta\mathbf{v}_k \Delta t$). Truncating second-order terms maintains consistency with the underlying continuous-time kinematic definition $\dot{\delta\mathbf{p}} = \delta\mathbf{v}$.
+		\item \textbf{Error Propagation Channel:} The acceleration error $\delta\mathbf{a}_n$ directly drives the velocity error dynamics $\delta\mathbf{v}_{k+1}$ as a first-order $\mathcal{O}(\Delta t)$ dependency. Consequently, acceleration perturbations propagate into position downstream through the velocity error state rather than directly through the position dynamic matrix.
+	\end{enumerate}
+	
+	Neglecting second-order terms, the linearized position error propagation reduces to:
+	\begin{equation*}
+		\delta\mathbf{p}_{k+1} \approx \delta\mathbf{p}_k + \delta\mathbf{v}_k \Delta t
+	\end{equation*}
+	
+	To determine the first $3 \times 15$ row-block of the dynamic matrix $\mathbf{F}_k$, we compute the partial derivatives of $\delta\mathbf{p}_{k+1}$ with respect to each continuous sub-vector of $\delta\mathbf{x}_k$:
+	\begin{align*}
+		\frac{\partial \delta\mathbf{p}_{k+1}}{\partial \delta\mathbf{p}_k} &= \mathbf{I}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{p}_{k+1}}{\partial \delta\mathbf{v}_k} &= \mathbf{I}_{3 \times 3} \Delta t \\
+		\frac{\partial \delta\mathbf{p}_{k+1}}{\partial \delta\bm{\theta}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{p}_{k+1}}{\partial \delta\mathbf{b}_{g,k}} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{p}_{k+1}}{\partial \delta\mathbf{b}_{a,k}} &= \mathbf{0}_{3 \times 3}
+	\end{align*}
+	
+	Arranging these partial derivatives horizontally forms the top $3 \times 15$ row-block $\mathbf{F}_{\delta\mathbf{p}, k}$ of the state transition matrix:
+	\begin{equation*}
+		\mathbf{F}_{\delta\mathbf{p}, k} = 
 		\begin{bmatrix}
-			\mathbf{p} \\
-			\mathbf{v} \\
-			\mathbf{q} \\
-			\mathbf{b}_g \\
-			\mathbf{b}_a
+			\mathbf{I}_{3 \times 3} & \mathbf{I}_{3 \times 3} \Delta t & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3}
 		\end{bmatrix}
 	\end{equation*}
 	
-	Because quaternions must maintain a length of 1, they cause mathematical issues in a standard Kalman filter. Instead, we use a 3D rotation vector $\bm{\delta\theta}$ to represent orientation error, giving us a 15-dimensional error state $\delta\mathbf{x}$:
+	\subsection{Velocity Block}
+	Recall that the true velocity $\mathbf{v}$ and nominal velocity $\hat{\mathbf{v}}$ in the world frame ($n$) are defined as:
 	\begin{equation*}
-		\delta\mathbf{x} =
+		\mathbf{v} = \hat{\mathbf{v}} + \delta\mathbf{v}
+	\end{equation*}
+	
+	The true continuous-time velocity dynamics are governed by the specific force measured by the accelerometer, rotated from the body frame ($b$) to the world frame ($n$), plus gravity:
+	\begin{equation*}
+		\dot{\mathbf{v}} = \mathbf{R}(\mathbf{q}) \mathbf{a}_b + \mathbf{g}_n
+	\end{equation*}
+	where $\mathbf{R}(\mathbf{q})$ is the rotation matrix corresponding to the true orientation quaternion $\mathbf{q}$, $\mathbf{g}_n = \begin{bmatrix} 0 & 0 & -g \end{bmatrix}^\top$ is the gravity vector in the navigation frame, and $\mathbf{a}_b = \mathbf{a}_{m} - \mathbf{b}_a - \mathbf{n}_a$ is the true specific force (with accelerometer measurement $\mathbf{a}_{m}$, bias $\mathbf{b}_a$, and additive noise $\mathbf{n}_a$).
+	
+	Similarly, the nominal velocity dynamics drop the noise terms and use nominal estimates:
+	\begin{equation*}
+		\dot{\hat{\mathbf{v}}} = \mathbf{R}(\hat{\mathbf{q}}) \hat{\mathbf{a}}_b + \mathbf{g}_n
+	\end{equation*}
+	where $\hat{\mathbf{a}}_b = \mathbf{a}_{m} - \hat{\mathbf{b}}_a$ is the bias-corrected measured acceleration.
+	
+	Subtracting the nominal dynamics from the true dynamics yields the continuous-time velocity error state derivative:
+	\begin{equation*}
+		\dot{\delta\mathbf{v}} = \dot{\mathbf{v}} - \dot{\hat{\mathbf{v}}} = \mathbf{R}(\mathbf{q}) (\mathbf{a}_{m} - \mathbf{b}_a - \mathbf{n}_a) - \mathbf{R}(\hat{\mathbf{q}}) (\mathbf{a}_{m} - \hat{\mathbf{b}}_a)
+	\end{equation*}
+	
+	Using the true quaternion composition $\mathbf{q} = \hat{\mathbf{q}} \otimes \delta\mathbf{q}(\delta\bm{\theta})$, the true rotation matrix can be approximated under the small-angle assumption ($\delta\mathbf{q} \approx \begin{bmatrix} 1 & \frac{1}{2}\delta\bm{\theta}^\top \end{bmatrix}^\top$) as:
+	\begin{equation*}
+		\mathbf{R}(\mathbf{q}) \approx \mathbf{R}(\hat{\mathbf{q}}) \left( \mathbf{I}_{3 \times 3} + [\delta\bm{\theta}]_\times \right)
+	\end{equation*}
+	where $[\cdot]_\times$ denotes the $3 \times 3$ skew-symmetric matrix operator representing the cross product.
+	
+	Substituting this linearised rotation matrix into the velocity error dynamics and expanding yields six individual product terms:
+	\begin{align*}
+		\dot{\delta\mathbf{v}} &\approx \mathbf{R}(\hat{\mathbf{q}}) \left( \mathbf{I}_{3 \times 3} + [\delta\bm{\theta}]_\times \right) (\hat{\mathbf{a}}_b - \delta\mathbf{b}_a - \mathbf{n}_a) - \mathbf{R}(\hat{\mathbf{q}}) \hat{\mathbf{a}}_b \\
+		&= \mathbf{R}(\hat{\mathbf{q}}) \hat{\mathbf{a}}_b - \mathbf{R}(\hat{\mathbf{q}}) \delta\mathbf{b}_a - \mathbf{R}(\hat{\mathbf{q}}) \mathbf{n}_a + \mathbf{R}(\hat{\mathbf{q}}) [\delta\bm{\theta}]_\times \hat{\mathbf{a}}_b - \mathbf{R}(\hat{\mathbf{q}}) [\delta\bm{\theta}]_\times \delta\mathbf{b}_a - \mathbf{R}(\hat{\mathbf{q}}) [\delta\bm{\theta}]_\times \mathbf{n}_a - \mathbf{R}(\hat{\mathbf{q}}) \hat{\mathbf{a}}_b
+	\end{align*}
+	
+	The nominal acceleration term $\mathbf{R}(\hat{\mathbf{q}}) \hat{\mathbf{a}}_b$ cancels out directly. Furthermore, we neglect the second-order terms $[\delta\bm{\theta}]_\times \delta\mathbf{b}_a$ (product of two small error states) and $[\delta\bm{\theta}]_\times \mathbf{n}_a$ (product of error state and noise), as their magnitudes $\mathcal{O}(\epsilon^2)$ are negligible compared to first-order quantities. 
+	
+	Applying the anti-commutativity property of the skew-symmetric operator ($[\delta\bm{\theta}]_\times \hat{\mathbf{a}}_b = -[\hat{\mathbf{a}}_b]_\times \delta\bm{\theta}$), the simplified linear continuous-time velocity error dynamics reduce to:
+	\begin{equation*}
+		\dot{\delta\mathbf{v}} \approx -\mathbf{R}(\hat{\mathbf{q}}) [\hat{\mathbf{a}}_b]_\times \delta\bm{\theta} - \mathbf{R}(\hat{\mathbf{q}}) \delta\mathbf{b}_a - \mathbf{R}(\hat{\mathbf{q}}) \mathbf{n}_a
+	\end{equation*}
+	
+	Discretising over a sampling period $\Delta t$ via first-order Euler integration gives:
+	\begin{equation*}
+		\delta\mathbf{v}_{k+1} \approx \delta\mathbf{v}_k - \mathbf{R}(\hat{\mathbf{q}}_k) [\hat{\mathbf{a}}_{b,k}]_\times \Delta t \, \delta\bm{\theta}_k - \mathbf{R}(\hat{\mathbf{q}}_k) \Delta t \, \delta\mathbf{b}_{a,k} + \mathbf{w}_{v,k}
+	\end{equation*}
+	
+	Taking the partial derivatives of $\delta\mathbf{v}_{k+1}$ with respect to each sub-vector of the error state $\delta\mathbf{x}_k$:
+	\begin{align*}
+		\frac{\partial \delta\mathbf{v}_{k+1}}{\partial \delta\mathbf{p}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{v}_{k+1}}{\partial \delta\mathbf{v}_k} &= \mathbf{I}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{v}_{k+1}}{\partial \delta\bm{\theta}_k} &= -\mathbf{R}(\hat{\mathbf{q}}_k) [\hat{\mathbf{a}}_{b,k}]_\times \Delta t \\
+		\frac{\partial \delta\mathbf{v}_{k+1}}{\partial \delta\mathbf{b}_{g,k}} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{v}_{k+1}}{\partial \delta\mathbf{b}_{a,k}} &= -\mathbf{R}(\hat{\mathbf{q}}_k) \Delta t
+	\end{align*}
+	
+	Arranging these partial derivatives horizontally forms the second $3 \times 15$ row-block $\mathbf{F}_{\delta\mathbf{v}, k}$ of the state transition matrix:
+	\begin{equation*}
+		\mathbf{F}_{\delta\mathbf{v}, k} = 
 		\begin{bmatrix}
-			\delta\mathbf{p} \\
-			\delta\mathbf{v} \\
-			\bm{\delta\theta} \\
-			\delta\mathbf{b}_g \\
-			\delta\mathbf{b}_a
+			\mathbf{0}_{3 \times 3} & \mathbf{I}_{3 \times 3} & -\mathbf{R}(\hat{\mathbf{q}}_k) [\hat{\mathbf{a}}_{b,k}]_\times \Delta t & \mathbf{0}_{3 \times 3} & -\mathbf{R}(\hat{\mathbf{q}}_k) \Delta t
 		\end{bmatrix}
 	\end{equation*}
 	
-	Once the optimal error state is computed during the measurement update, it is incorporated into the nominal state via state injection:
-	\begin{equation*}
-		\mathbf{x} \leftarrow \mathbf{x} \oplus \delta\mathbf{x}
-	\end{equation*}
 	
-	Here, $\oplus$ denotes the generalized composition operator. While Euclidean components (position, velocity, and sensor biases) propagate using standard vector addition, orientation requires quaternion composition:
-	\begin{equation*}
-		\begin{bmatrix}
-			\mathbf{p} \\
-			\mathbf{v} \\
-			\mathbf{q} \\
-			\mathbf{b}_g \\
-			\mathbf{b}_a
-		\end{bmatrix}
-		\leftarrow
-		\begin{bmatrix}
-			\mathbf{p} + \delta\mathbf{p} \\
-			\mathbf{v} + \delta\mathbf{v} \\
-			\mathbf{q} \otimes \delta\mathbf{q}(\bm{\delta\theta}) \\
-			\mathbf{b}_g + \delta\mathbf{b}_g \\
-			\mathbf{b}_a + \delta\mathbf{b}_a
-		\end{bmatrix}
-	\end{equation*}
-	where $\otimes$ denotes quaternion multiplication and $\delta\mathbf{q}(\bm{\delta\theta}) \approx \begin{bmatrix} 1 & \frac{1}{2}\bm{\delta\theta}^\top \end{bmatrix}^\top$ represents the error quaternion under a small-angle assumption.
-	\vspace{1em}
-	
-	As shown in the previous section we can estimate the linear propagation of the error state using the following relation:
-	\begin{equation*}
-		\delta\mathbf{x}_{k+1} \approx \mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k
-	\end{equation*}
-	Where $\mathbf{F}_k$ is the Jacobian:
-	\begin{equation*}
-		\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k}
-	\end{equation*}
    
 	
 	
