@@ -695,8 +695,76 @@
 	\begin{equation}
 		\delta\hat{\mathbf{x}}_{k+1} \leftarrow \mathbf{0}
 	\end{equation}
+	
+	\section{Drone State Estimator}
+	
+	The previous sections established the theoretical foundations of the standard and error-state Kalman filters. This section applies these principles directly to our autonomous drone platform, detailing the full system model and tying the estimation pipeline together.
+	
+	Recall that the 16-dimensional true (nominal) state vector $\mathbf{x}$ consists of position, velocity, orientation quaternion, gyroscope bias, and accelerometer bias:
+	\begin{equation*}
+		\mathbf{x} =
+		\begin{bmatrix}
+			\mathbf{p} \\
+			\mathbf{v} \\
+			\mathbf{q} \\
+			\mathbf{b}_g \\
+			\mathbf{b}_a
+		\end{bmatrix}
+	\end{equation*}
+	
+	Because quaternions must maintain a length of 1, they cause mathematical issues in a standard Kalman filter. Instead, we use a 3D rotation vector $\bm{\delta\theta}$ to represent orientation error, giving us a 15-dimensional error state $\delta\mathbf{x}$:
+	\begin{equation*}
+		\delta\mathbf{x} =
+		\begin{bmatrix}
+			\delta\mathbf{p} \\
+			\delta\mathbf{v} \\
+			\bm{\delta\theta} \\
+			\delta\mathbf{b}_g \\
+			\delta\mathbf{b}_a
+		\end{bmatrix}
+	\end{equation*}
+	
+	Once the optimal error state is computed during the measurement update, it is incorporated into the nominal state via state injection:
+	\begin{equation*}
+		\mathbf{x} \leftarrow \mathbf{x} \oplus \delta\mathbf{x}
+	\end{equation*}
+	
+	Here, $\oplus$ denotes the generalized composition operator. While Euclidean components (position, velocity, and sensor biases) propagate using standard vector addition, orientation requires quaternion composition:
+	\begin{equation*}
+		\begin{bmatrix}
+			\mathbf{p} \\
+			\mathbf{v} \\
+			\mathbf{q} \\
+			\mathbf{b}_g \\
+			\mathbf{b}_a
+		\end{bmatrix}
+		\leftarrow
+		\begin{bmatrix}
+			\mathbf{p} + \delta\mathbf{p} \\
+			\mathbf{v} + \delta\mathbf{v} \\
+			\mathbf{q} \otimes \delta\mathbf{q}(\bm{\delta\theta}) \\
+			\mathbf{b}_g + \delta\mathbf{b}_g \\
+			\mathbf{b}_a + \delta\mathbf{b}_a
+		\end{bmatrix}
+	\end{equation*}
+	where $\otimes$ denotes quaternion multiplication and $\delta\mathbf{q}(\bm{\delta\theta}) \approx \begin{bmatrix} 1 & \frac{1}{2}\bm{\delta\theta}^\top \end{bmatrix}^\top$ represents the error quaternion under a small-angle assumption.
+	\vspace{1em}
+	
+	\subsection{State Transition matrix F}
+	
+	As shown in the previous section we can estimate the linear propagation of the error state using the following relation:
+	\begin{equation*}
+		\delta\mathbf{x}_{k+1} \approx \mathbf{F}_k \delta\mathbf{x}_k + \mathbf{w}_k
+	\end{equation*}
+	Where $\mathbf{F}_k$ is the Jacobian:
+	\begin{equation*}
+		\mathbf{F}_k = \left. \frac{\partial f}{\partial \mathbf{x}} \right|_{\hat{\mathbf{x}}_k^+, \mathbf{u}_k}
+	\end{equation*}
+	
+	In the upcoming sections we'll focus on determining this matrix.
+	
 
-	\subsection{Position Block}
+	\subsubsection{Position Block}
 	Recall the relationship between the true, nominal (estimated), and error states for position and velocity in the world frame ($n$):
 	\begin{equation*}
 		\mathbf{p} = \hat{\mathbf{p}} + \delta\mathbf{p}, \quad \mathbf{v} = \hat{\mathbf{v}} + \delta\mathbf{v}
@@ -741,7 +809,7 @@
 		\end{bmatrix}
 	\end{equation*}
 	
-	\subsection{Velocity Block}
+	\subsubsection{Velocity Block}
 	Recall that the true velocity $\mathbf{v}$ and nominal velocity $\hat{\mathbf{v}}$ in the world frame ($n$) are defined as:
 	\begin{equation*}
 		\mathbf{v} = \hat{\mathbf{v}} + \delta\mathbf{v}
@@ -805,11 +873,284 @@
 		\end{bmatrix}
 	\end{equation*}
 	
+	\subsubsection{Orientation Error Block}
 	
-   
+	Recall that the true orientation quaternion $\mathbf{q}$ is related to the nominal estimate $\hat{\mathbf{q}}$ and the small-angle error quaternion $\delta\mathbf{q}$ via Hamilton quaternion composition:
+	\begin{equation*}
+		\mathbf{q} = \hat{\mathbf{q}} \otimes \delta\mathbf{q}
+	\end{equation*}
 	
+	Under the small-angle assumption ($\delta\bm{\theta} \ll 1$), the error quaternion is approximated by:
+	\begin{equation*}
+		\delta\mathbf{q} \approx 
+		\begin{bmatrix} 
+			1 \\ 
+			\frac{1}{2}\delta\bm{\theta} 
+		\end{bmatrix}
+	\end{equation*}
 	
+	The continuous-time dynamics of the true quaternion $\mathbf{q}$ and nominal quaternion $\hat{\mathbf{q}}$ are driven by the angular velocity vectors expressed in the body frame:
+	\begin{align*}
+		\dot{\mathbf{q}} &= \frac{1}{2} \mathbf{q} \otimes \bm{\omega}_b \\
+		\dot{\hat{\mathbf{q}}} &= \frac{1}{2} \hat{\mathbf{q}} \otimes \hat{\bm{\omega}}_b
+	\end{align*}
+	where $\bm{\omega}_b = \bm{\omega}_m - \mathbf{b}_g - \mathbf{n}_g$ is the true angular velocity (with gyroscope measurement $\bm{\omega}_m$, bias $\mathbf{b}_g$, and noise $\mathbf{n}_g$), and $\hat{\bm{\omega}}_b = \bm{\omega}_m - \hat{\mathbf{b}}_g$ is the nominal bias-corrected angular velocity.
 	
+	To isolate the error dynamics, we differentiate the relation $\delta\mathbf{q} = \hat{\mathbf{q}}^{-1} \otimes \mathbf{q}$ with respect to time using the product rule:
+	\begin{align*}
+		\dot{\delta\mathbf{q}} &= \dot{\hat{\mathbf{q}}}^{-1} \otimes \mathbf{q} + \hat{\mathbf{q}}^{-1} \otimes \dot{\mathbf{q}} \\
+		&= \left( -\frac{1}{2} \hat{\bm{\omega}}_b \otimes \hat{\mathbf{q}}^{-1} \right) \otimes \mathbf{q} + \hat{\mathbf{q}}^{-1} \otimes \left( \frac{1}{2} \mathbf{q} \otimes \bm{\omega}_b \right) \\
+		&= -\frac{1}{2} \hat{\bm{\omega}}_b \otimes \delta\mathbf{q} + \frac{1}{2} \delta\mathbf{q} \otimes \bm{\omega}_b
+	\end{align*}
+	where we used the identity $\dot{\hat{\mathbf{q}}}^{-1} = -\frac{1}{2} \hat{\bm{\omega}}_b \otimes \hat{\mathbf{q}}^{-1}$ (treating pure 3D vectors as pure imaginary quaternions).
+	
+	Substituting the true angular velocity $\bm{\omega}_b = \hat{\bm{\omega}}_b - \delta\mathbf{b}_g - \mathbf{n}_g$ yields:
+	\begin{equation*}
+		\dot{\delta\mathbf{q}} = \frac{1}{2} \left( \delta\mathbf{q} \otimes \hat{\bm{\omega}}_b - \hat{\bm{\omega}}_b \otimes \delta\mathbf{q} \right) - \frac{1}{2} \delta\mathbf{q} \otimes (\delta\mathbf{b}_g + \mathbf{n}_g)
+	\end{equation*}
+	
+	Recall that a quaternion consists of a scalar and vector part, $\mathbf{q} = \begin{bmatrix} q_w & \mathbf{q}_v^\top \end{bmatrix}^\top$, and the product of two pure imaginary quaternions $\mathbf{a} = \begin{bmatrix} 0 & \mathbf{a}_v^\top \end{bmatrix}^\top$ and $\mathbf{b} = \begin{bmatrix} 0 & \mathbf{b}_v^\top \end{bmatrix}^\top$ yields the vector part $(\mathbf{a} \otimes \mathbf{b})_v = \mathbf{a}_v \times \mathbf{b}_v$.
+	
+	To extract the 3D angular error dynamics $\dot{\delta\bm{\theta}}$, we focus exclusively on the vector component $\dot{\delta\mathbf{q}}_v = \frac{1}{2}\dot{\delta\bm{\theta}}$ of the error quaternion derivative. Taking the vector extraction operator $(\cdot)_v$ of the commutator term with $\delta\mathbf{q} \approx \begin{bmatrix} 1 & \frac{1}{2}\delta\bm{\theta}^\top \end{bmatrix}^\top$ and the pure angular velocity quaternion $\hat{\bm{\omega}}_b = \begin{bmatrix} 0 & \hat{\bm{\omega}}_b^\top \end{bmatrix}^\top$ gives:
+	\begin{align*}
+		\frac{1}{2} \left( \delta\mathbf{q} \otimes \hat{\bm{\omega}}_b - \hat{\bm{\omega}}_b \otimes \delta\mathbf{q} \right)_v &= \frac{1}{2} \left( \hat{\bm{\omega}}_b + \frac{1}{2}\delta\bm{\theta} \times \hat{\bm{\omega}}_b - \hat{\bm{\omega}}_b - \hat{\bm{\omega}}_b \times \frac{1}{2}\delta\bm{\theta} \right) \\
+		&= \frac{1}{2} \left( \delta\bm{\theta} \times \hat{\bm{\omega}}_b \right) \\
+		&= -\frac{1}{2} [\hat{\bm{\omega}}_b]_\times \delta\bm{\theta}
+	\end{align*}
+	
+	Equating this to the vector part derivative $\dot{\delta\mathbf{q}}_v = \frac{1}{2}\dot{\delta\bm{\theta}}$ allows us to cancel the factor of $\frac{1}{2}$, cleanly isolating the vector orientation error rate.
+	
+	Furthermore, approximating $\delta\mathbf{q} \otimes (\delta\mathbf{b}_g + \mathbf{n}_g) \approx \begin{bmatrix} 0 \\ \delta\mathbf{b}_g + \mathbf{n}_g \end{bmatrix}$ by dropping second-order cross-products of error states, the continuous-time orientation error dynamics reduce to:
+	\begin{equation*}
+		\dot{\delta\bm{\theta}} = -[\hat{\bm{\omega}}_b]_\times \delta\bm{\theta} - \delta\mathbf{b}_g - \mathbf{n}_g
+	\end{equation*}
+	
+	Discretizing over a sampling interval $\Delta t$ via first-order numerical integration yields:
+	\begin{equation*}
+		\delta\bm{\theta}_{k+1} \approx \left( \mathbf{I}_{3 \times 3} - [\hat{\bm{\omega}}_{b,k}]_\times \Delta t \right) \delta\bm{\theta}_k - \mathbf{I}_{3 \times 3} \Delta t \, \delta\mathbf{b}_{g,k} + \mathbf{w}_{\theta,k}
+	\end{equation*}
+	
+	Taking partial derivatives with respect to each sub-vector of the error state $\delta\mathbf{x}_k$:
+	\begin{align*}
+		\frac{\partial \delta\bm{\theta}_{k+1}}{\partial \delta\mathbf{p}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\bm{\theta}_{k+1}}{\partial \delta\mathbf{v}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\bm{\theta}_{k+1}}{\partial \delta\bm{\theta}_k} &= \mathbf{I}_{3 \times 3} - [\hat{\bm{\omega}}_{b,k}]_\times \Delta t \\
+		\frac{\partial \delta\bm{\theta}_{k+1}}{\partial \delta\mathbf{b}_{g,k}} &= -\mathbf{I}_{3 \times 3} \Delta t \\
+		\frac{\partial \delta\bm{\theta}_{k+1}}{\partial \delta\mathbf{b}_{a,k}} &= \mathbf{0}_{3 \times 3}
+	\end{align*}
+	
+	Arranging these partial derivatives horizontally forms the third $3 \times 15$ row-block $\mathbf{F}_{\delta\bm{\theta}, k}$ of the state transition matrix:
+	\begin{equation*}
+		\mathbf{F}_{\delta\bm{\theta}, k} = 
+		\begin{bmatrix}
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{I}_{3 \times 3} - [\hat{\bm{\omega}}_{b,k}]_\times \Delta t & -\mathbf{I}_{3 \times 3} \Delta t & \mathbf{0}_{3 \times 3}
+		\end{bmatrix}
+	\end{equation*}
+	
+	\subsubsection{Gyroscope Bias Error Block}
+	The gyroscope bias $\mathbf{b}_g$ is modeled as a slowly varying offset driven by Gaussian white noise (a random walk process). The measured angular velocity $\bm{\omega}_m$ relates to the true angular velocity $\bm{\omega}_b$, the current bias estimate $\mathbf{b}_g$, and measurement noise $\mathbf{n}_g$ according to:
+	\begin{equation*}
+		\bm{\omega}_m = \bm{\omega}_b + \mathbf{b}_g + \mathbf{n}_g
+	\end{equation*}
+	
+	Since the true bias drift is unobservable directly from kinematic models, the nominal bias estimate is assumed stationary ($\dot{\hat{\mathbf{b}}}_g = \mathbf{0}_{3 \times 1}$). The continuous-time evolution of the bias error state $\delta\mathbf{b}_g$ is therefore purely driven by the bias random walk noise process $\mathbf{n}_{bg}$:
+	\begin{equation*}
+		\dot{\delta\mathbf{b}}_g = \dot{\mathbf{b}}_g - \dot{\hat{\mathbf{b}}}_g = \mathbf{n}_{bg}
+	\end{equation*}
+	
+	Applying first-order Euler integration over the sampling interval $\Delta t$, the discrete-time error propagation equation simplifies to:
+	\begin{equation*}
+		\delta\mathbf{b}_{g,k+1} = \delta\mathbf{b}_{g,k} + \mathbf{n}_{bg,k} \Delta t
+	\end{equation*}
+	
+	Consequently, the bias error state at step $k+1$ is decoupled from position, velocity, orientation, and accelerometer bias error states at step $k$, maintaining its own state across transitions. The corresponding Jacobians with respect to the error state vector $\delta\mathbf{x}_k$ are:
+	\begin{align*}
+		\frac{\partial \delta\mathbf{b}_{g,k+1}}{\partial \delta\mathbf{p}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{g,k+1}}{\partial \delta\mathbf{v}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{g,k+1}}{\partial \delta\bm{\theta}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{g,k+1}}{\partial \delta\mathbf{b}_{g,k}} &= \mathbf{I}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{g,k+1}}{\partial \delta\mathbf{b}_{a,k}} &= \mathbf{0}_{3 \times 3}
+	\end{align*}\textbf{}
+	
+	\subsection{Accelerometer Bias Error Block}
+	The accelerometer bias $\mathbf{b}_a$ is modeled as a slowly varying offset driven by Gaussian white noise (a random walk process). The measured specific force $\mathbf{f}_m$ in the body frame relates to the true specific force $\mathbf{f}_b$, the bias vector $\mathbf{b}_a$, and measurement noise $\mathbf{n}_a$ according to:
+	\begin{equation*}
+		\mathbf{f}_m = \mathbf{f}_b + \mathbf{b}_a + \mathbf{n}_a
+	\end{equation*}
+	
+	Assuming no deterministic model for the drift, the nominal bias estimate is modeled as stationary ($\dot{\hat{\mathbf{b}}}_a = \mathbf{0}_{3 \times 1}$). The continuous-time evolution of the accelerometer bias error state $\delta\mathbf{b}_a$ is driven entirely by the bias random walk noise process $\mathbf{n}_{ba}$:
+	\begin{equation*}
+		\dot{\delta\mathbf{b}}_a = \dot{\mathbf{b}}_a - \dot{\hat{\mathbf{b}}}_a = \mathbf{n}_{ba}
+	\end{equation*}
+	
+	Applying first-order Euler integration over the sampling interval $\Delta t$, the discrete-time error propagation equation becomes:
+	\begin{equation*}
+		\delta\mathbf{b}_{a,k+1} = \delta\mathbf{b}_{a,k} + \mathbf{n}_{ba,k} \Delta t
+	\end{equation*}
+	
+	As with the gyroscope bias, the accelerometer bias error state at step $k+1$ is decoupled from position, velocity, orientation, and gyroscope bias error states at step $k$, preserving its existing value across time steps. The corresponding Jacobians with respect to the error state vector $\delta\mathbf{x}_k$ are:
+	\begin{align*}
+		\frac{\partial \delta\mathbf{b}_{a,k+1}}{\partial \delta\mathbf{p}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{a,k+1}}{\partial \delta\mathbf{v}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{a,k+1}}{\partial \delta\bm{\theta}_k} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{a,k+1}}{\partial \delta\mathbf{b}_{g,k}} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial \delta\mathbf{b}_{a,k+1}}{\partial \delta\mathbf{b}_{a,k}} &= \mathbf{I}_{3 \times 3}
+	\end{align*}
+	
+	\subsection{Observation Matrix H}
+	
+	The observation matrix $\mathbf{H}_k$ maps the 15-dimensional error state $\delta\mathbf{x}_k$ to sensor measurements via linearisation around the nominal state $\hat{\mathbf{x}}_k$:
+	\begin{equation*}
+		\mathbf{H}_k = \left. \frac{\partial h(\mathbf{x})}{\partial \delta\mathbf{x}} \right|_{\mathbf{x} = \hat{\mathbf{x}}_k} = 
+		\begin{bmatrix} 
+			\frac{\partial h}{\partial \delta\mathbf{p}} & \frac{\partial h}{\partial \delta\mathbf{v}} & \frac{\partial h}{\partial \bm{\delta\theta}} & \frac{\partial h}{\partial \delta\mathbf{b}_g} & \frac{\partial h}{\partial \delta\mathbf{b}_a} 
+		\end{bmatrix}
+	\end{equation*}
+	
+	The general measurement model relates a physical sensor measurement $\mathbf{z}_k$ to the nominal state $\hat{\mathbf{x}}_k$ and error state $\delta\mathbf{x}_k$:
+	\begin{equation*}
+		\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k = h(\hat{\mathbf{x}}_k \oplus \delta\mathbf{x}_k) + \mathbf{v}_k
+	\end{equation*}
+	where $\mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$ represents Gaussian measurement noise. Expanding $h(\hat{\mathbf{x}}_k \oplus \delta\mathbf{x}_k)$ via first-order Taylor expansion around the nominal state yields:
+	\begin{equation*}
+		\mathbf{z}_k \approx h(\hat{\mathbf{x}}_k) + \mathbf{H}_k \delta\mathbf{x}_k + \mathbf{v}_k \implies \mathbf{y}_k = \mathbf{z}_k - h(\hat{\mathbf{x}}_k) \approx \mathbf{H}_k \delta\mathbf{x}_k + \mathbf{v}_k
+	\end{equation*}
+	where $\mathbf{y}_k$ denotes the measurement residual vector. The upcoming sections will focus on determining the H-matrix.
+	
+	\subsubsection{GPS (GNSS) Observation Matrix}
+	A 3D GNSS receiver provides direct measurements of position and velocity in the world frame ($n$):
+	\begin{equation*}
+		\mathbf{z}_{\text{GPS}} = 
+		\begin{bmatrix} 
+			\mathbf{p}_{\text{GPS}} \\ 
+			\mathbf{v}_{\text{GPS}} 
+		\end{bmatrix} = 
+		\begin{bmatrix} 
+			\mathbf{p} \\ 
+			\mathbf{v} 
+		\end{bmatrix} + \mathbf{v}_{\text{GPS}}
+	\end{equation*}
+	
+	Recall the relationships for position and velocity: $\mathbf{p} = \hat{\mathbf{p}} + \delta\mathbf{p}$ and $\mathbf{v} = \hat{\mathbf{v}} + \delta\mathbf{v}$. The corresponding measurement functions are simply $h_{\mathbf{p}}(\mathbf{x}) = \hat{\mathbf{p}} + \delta\mathbf{p}$ and $h_{\mathbf{v}}(\mathbf{x}) = \hat{\mathbf{v}} + \delta\mathbf{v}$. Computing the partial derivatives with respect to each error sub-vector gives:
+	\begin{align*}
+		\frac{\partial h_{\mathbf{p}}}{\partial \delta\mathbf{p}} &= \mathbf{I}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{p}}}{\partial \delta\mathbf{v}} = \mathbf{0}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{p}}}{\partial \bm{\delta\theta}} = \mathbf{0}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{p}}}{\partial \delta\mathbf{b}_g} = \mathbf{0}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{p}}}{\partial \delta\mathbf{b}_a} = \mathbf{0}_{3 \times 3} \\
+		\frac{\partial h_{\mathbf{v}}}{\partial \delta\mathbf{p}} &= \mathbf{0}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{v}}}{\partial \delta\mathbf{v}} = \mathbf{I}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{v}}}{\partial \bm{\delta\theta}} = \mathbf{0}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{v}}}{\partial \delta\mathbf{b}_g} = \mathbf{0}_{3 \times 3}, \quad \frac{\partial h_{\mathbf{v}}}{\partial \delta\mathbf{b}_a} = \mathbf{0}_{3 \times 3}
+	\end{align*}
+	
+	Arranging these partial derivatives horizontally forms the $6 \times 15$ GPS observation matrix $\mathbf{H}_{\text{GPS}, k}$:
+	\begin{equation*}
+		\mathbf{H}_{\text{GPS}, k} = 
+		\begin{bmatrix}
+			\mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3}
+		\end{bmatrix}
+	\end{equation*}
+	
+	\subsubsection{Barometric Altimeter Observation Matrix}
+	A barometric pressure sensor provides a scalar altitude measurement $z_{\text{baro}}$ along the vertical world frame axis ($p_z$):
+	\begin{equation*}
+		z_{\text{baro}} = p_z + v_{\text{baro}} = \mathbf{e}_3^\top \mathbf{p} + v_{\text{baro}}
+	\end{equation*}
+	where $\mathbf{e}_3 = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}^\top$. Substituting the true position decomposition $\mathbf{p} = \hat{\mathbf{p}} + \delta\mathbf{p}$ yields:
+	\begin{equation*}
+		h_{\text{baro}}(\mathbf{x}) = \mathbf{e}_3^\top (\hat{\mathbf{p}} + \delta\mathbf{p}) = \hat{p}_z + \delta p_z
+	\end{equation*}
+	
+	Taking partial derivatives with respect to sub-vectors of $\delta\mathbf{x}_k$:
+	\begin{align*}
+		\frac{\partial h_{\text{baro}}}{\partial \delta\mathbf{p}} &= \mathbf{e}_3^\top = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix} \\
+		\frac{\partial h_{\text{baro}}}{\partial \delta\mathbf{v}} = \frac{\partial h_{\text{baro}}}{\partial \bm{\delta\theta}} &= \frac{\partial h_{\text{baro}}}{\partial \delta\mathbf{b}_g} = \frac{\partial h_{\text{baro}}}{\partial \delta\mathbf{b}_a} = \mathbf{0}_{1 \times 3}
+	\end{align*}
+	
+	Arranging these partial derivatives forms the $1 \times 15$ barometric observation vector $\mathbf{H}_{\text{baro}, k}$:
+	\begin{equation*}
+		\mathbf{H}_{\text{baro}, k} = 
+		\begin{bmatrix}
+			0 & 0 & 1 & \mathbf{0}_{1 \times 3} & \mathbf{0}_{1 \times 3} & \mathbf{0}_{1 \times 3} & \mathbf{0}_{1 \times 3}
+		\end{bmatrix}
+	\end{equation*}
+	
+	\subsubsection{Magnetometer Observation Matrix}
+	A 3-axis magnetometer measures the magnetic field vector $\mathbf{m}_b$ directly in the drone's body frame ($b$):
+	\begin{equation*}
+		\mathbf{z}_{\text{mag}} = \mathbf{m}_b + \mathbf{v}_{\text{mag}}
+	\end{equation*}
+	
+	Given a known reference magnetic field $\mathbf{m}_n = \begin{bmatrix} m_x & m_y & m_z \end{bmatrix}^\top$ in the world frame ($n$), the true body-frame field relates to orientation via:
+	\begin{equation*}
+		\mathbf{m}_b = \mathbf{R}(\mathbf{q})^\top \mathbf{m}_n
+	\end{equation*}
+	
+	Using the orientation error approximation $\mathbf{R}(\mathbf{q}) \approx \mathbf{R}(\hat{\mathbf{q}}) \left( \mathbf{I}_{3 \times 3} + [\bm{\delta\theta}]_\times \right)$, taking the matrix transpose yields $\mathbf{R}(\mathbf{q})^\top \approx \left( \mathbf{I}_{3 \times 3} - [\bm{\delta\theta}]_\times \right) \mathbf{R}(\hat{\mathbf{q}})^\top$. Substituting this into the measurement equation:
+	\begin{align*}
+		h_{\text{mag}}(\mathbf{x}) &= \left( \mathbf{I}_{3 \times 3} - [\bm{\delta\theta}]_\times \right) \mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n \\
+		&= \mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n - [\bm{\delta\theta}]_\times \left( \mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n \right)
+	\end{align*}
+	
+	Defining the nominal predicted magnetic measurement as $\hat{\mathbf{m}}_b = \mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n$ and applying skew-symmetric anti-commutativity ($[\mathbf{a}]_\times \mathbf{b} = -[\mathbf{b}]_\times \mathbf{a}$), the expression reduces to:
+	\begin{equation*}
+		h_{\text{mag}}(\mathbf{x}) = \hat{\mathbf{m}}_b + [\hat{\mathbf{m}}_b]_\times \bm{\delta\theta}
+	\end{equation*}
+
+	Note that $\hat{\mathbf{m}}_b$ is the predicted body-frame magnetic field, computed by rotating the known Earth reference vector $\mathbf{m}_n$ using the current nominal orientation estimate $\hat{\mathbf{q}}_k$. This model relies on knowing $\mathbf{m}_n$, which assumes the navigation frame $n$ is aligned relative to Earth's magnetic field—a condition typically satisfied in practice.
+	
+	Evaluating partial derivatives with respect to sub-vectors of $\delta\mathbf{x}_k$:
+	\begin{align*}
+		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{p}} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{v}} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial h_{\text{mag}}}{\partial \bm{\delta\theta}} &= [\hat{\mathbf{m}}_b]_\times = \left[ \mathbf{R}(\hat{\mathbf{q}}_k)^\top \mathbf{m}_n \right]_\times \\
+		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{b}_g} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{b}_a} &= \mathbf{0}_{3 \times 3}
+	\end{align*}
+	
+	Arranging these partial derivatives forms the $3 \times 15$ magnetometer observation matrix $\mathbf{H}_{\text{mag}, k}$:
+	\begin{equation*}
+		\mathbf{H}_{\text{mag}, k} = 
+		\begin{bmatrix}
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \left[ \mathbf{R}(\hat{\mathbf{q}}_k)^\top \mathbf{m}_n \right]_\times & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3}
+		\end{bmatrix}
+	\end{equation*}
+	
+	\subsubsection{Accelerometer Observation Matrix}
+	A 3-axis accelerometer measures the specific force vector $\mathbf{a}_b$ directly in the drone's body frame ($b$). Under quasi-static conditions ($\mathbf{a}_{\text{lin}} \approx \mathbf{0}$), this measurement corresponds to the upward reaction force opposing Earth's gravity:
+	\begin{equation*}
+		\mathbf{z}_{\text{acc}} = \mathbf{a}_b + \mathbf{v}_{\text{acc}}
+	\end{equation*}
+	
+	Given the known gravity reference vector $\mathbf{g}_n = \begin{bmatrix} 0 & 0 & -g \end{bmatrix}^\top$ in the East-North-Up (ENU) world frame ($n$), where $g \approx 9.81 \text{ m/s}^2$, the true body-frame specific force relates to orientation via:
+	\begin{equation*}
+		\mathbf{a}_b = -\mathbf{R}(\mathbf{q})^\top \mathbf{g}_n
+	\end{equation*}
+	
+	Using the orientation error approximation $\mathbf{R}(\mathbf{q}) \approx \mathbf{R}(\hat{\mathbf{q}}) \left( \mathbf{I}_{3 \times 3} + [\bm{\delta\theta}]_\times \right)$, taking the matrix transpose yields $\mathbf{R}(\mathbf{q})^\top \approx \left( \mathbf{I}_{3 \times 3} - [\bm{\delta\theta}]_\times \right) \mathbf{R}(\hat{\mathbf{q}})^\top$. Substituting this into the measurement equation:
+	\begin{align*}
+		h_{\text{acc}}(\mathbf{x}) &= -\left( \mathbf{I}_{3 \times 3} - [\bm{\delta\theta}]_\times \right) \mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n \\
+		&= -\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n + [\bm{\delta\theta}]_\times \left( -\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n \right)
+	\end{align*}
+	
+	Defining the nominal predicted accelerometer measurement as $\hat{\mathbf{a}}_b = -\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n$ and applying skew-symmetric anti-commutativity ($[\mathbf{a}]_\times \mathbf{b} = -[\mathbf{b}]_\times \mathbf{a}$), the expression reduces to:
+	\begin{equation*}
+		h_{\text{acc}}(\mathbf{x}) = \hat{\mathbf{a}}_b + [\hat{\mathbf{a}}_b]_\times \bm{\delta\theta}
+	\end{equation*}
+	
+	Note that $\hat{\mathbf{a}}_b$ is the predicted body-frame specific force, computed by projecting the negative Earth gravity vector $-\mathbf{g}_n$ into the body frame using the current nominal orientation estimate $\hat{\mathbf{q}}_k$. Because accelerometers measure total specific force $\mathbf{f}_b = \mathbf{a}_{\text{lin}} - \mathbf{R}(\mathbf{q})^\top \mathbf{g}_n$, body accelerations ($\mathbf{a}_{\text{lin}} \neq \mathbf{0}$) distort the gravity direction. To prevent roll and pitch degradation during dynamic maneuvers, the update is gated or the measurement covariance matrix $\mathbf{R}_{\text{acc}}$ is inflated when $|\|\mathbf{z}_{\text{acc}}\| - g| > \epsilon$.
+	
+	Evaluating partial derivatives with respect to sub-vectors of $\delta\mathbf{x}_k$:
+	\begin{align*}
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{p}} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{v}} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial h_{\text{acc}}}{\partial \bm{\delta\theta}} &= [\hat{\mathbf{a}}_b]_\times = \left[ -\mathbf{R}(\hat{\mathbf{q}}_k)^\top \mathbf{g}_n \right]_\times \\
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{b}_g} &= \mathbf{0}_{3 \times 3} \\
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{b}_a} &= \mathbf{0}_{3 \times 3}
+	\end{align*}
+	
+	Arranging these partial derivatives forms the $3 \times 15$ accelerometer observation matrix $\mathbf{H}_{\text{acc}, k}$:
+	\begin{equation*}
+		\mathbf{H}_{\text{acc}, k} = 
+		\begin{bmatrix}
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \left[ -\mathbf{R}(\hat{\mathbf{q}}_k)^\top \mathbf{g}_n \right]_\times & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3}
+		\end{bmatrix}
+	\end{equation*}
 	
 	
 \end{document}
