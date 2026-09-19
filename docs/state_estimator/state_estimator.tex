@@ -536,9 +536,12 @@
 	
 	The ESKF operates recursively through the following four-step loop:
 	\begin{enumerate}
-		\item \textbf{Nominal State Propagation:} Integrate the non-linear system dynamics to propagate the nominal state forward in time, assuming zero noise.
-		\item \textbf{Error State Estimation:} Predict the growth of error uncertainty, compute the Kalman gain using incoming measurements, and estimate the optimal error state $\delta\hat{\mathbf{x}}_{k+1}$.
-		\item \textbf{State Injection (Correction):} Combine the estimated error state with the nominal state to update the true nominal state estimate, and update the error covariance matrix.
+		\item \textbf{Nominal state propagation:} Integrate the non-linear system dynamics to propagate the nominal state forward in time, assuming zero noise.
+		\item \textbf{Residual computation:} Make a measurement and compare it with the expected measurement based on the propagated state using the non-linear measurment function $h$ too compute the residual $\mathbf{y}$.
+		\item \textbf{Kalman gain computation:} Compute the Kalman gain $\mathbf{K}$
+		\item \textbf{Error state estimation:} Using the Kalman gian and the residual, compute the new error state $\delta\hat{\mathbf{x}}_{k+1}$.
+		\item \textbf{State injection (correction):} Combine the estimated error state with the nominal state to update the true nominal state estimate, and update the error covariance matrix.
+		\item \textbf{Error covariance update:} Now we have fused the predicted and measured value we need too update the uncertainty of the error estimate.
 		\item \textbf{Error Reset:} Reset the expected error state to zero for the next filter iteration.
 	\end{enumerate}
 	
@@ -550,23 +553,31 @@
 		\hat{\mathbf{x}}_{k+1}^- = f(\hat{\mathbf{x}}_k^+, \mathbf{u}_k)
 	\end{equation}
 	
-	\subsection{Error State Estimation}
+	\subsection{Residual computation}
 	
-	After the arrival of a new measurement $\mathbf{z}_{k+1}$, the a posteriori optimal error estimate $\delta\hat{\mathbf{x}}_{k+1}$ is calculated as:
+	Too compute the residual we compare an actual measurement $\mathbf{z}_{k+1}$ to the expected measurement $\hat{\mathbf{z}}_{k+1}$. We can derive the expected measurement from the propagated state and the non-linear measurement function $h$:
 	
-	\begin{equation}
-		\delta\hat{\mathbf{x}}_{k+1} = \mathbf{K} \mathbf{y}_{k+1}
-	\end{equation}
+	\begin{equation*}
+		\hat{\mathbf{z}}_{k+1} = h(\hat{\mathbf{x}}_{k+1}^-, \mathbf{u}_k)
+	\end{equation*}
 	
-	where $\mathbf{y}_{k+1}$ is the measurement residual and $\mathbf{K}$ is the Kalman gain matrix. The Kalman gain balances uncertainty between the propagated model dynamics and the sensor measurements. Its main components for the computation are:
-	\begin{itemize}
-		\item The uncertainty of the error state propagation, represented by the prior error covariance matrix $\mathbf{P}_{k+1}^-$.
-		\item The noise characteristics of the physical sensor, represented by the measurement noise covariance matrix $\mathbf{R}_{k+1}$.
-	\end{itemize}
+	The residual is defined as the difference between these two quantities:
+	\begin{equation*}
+		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - \hat{\mathbf{z}}_{k+1}
+	\end{equation*}
 	
-	\subsubsection{Propagation of Error Uncertainty}
+	\subsection{Kalman gain computation}
+	Now that we have obtained the residual $\mathbf{y}_{k+1}$, we need too know how "much" of it we'll use too update the state. If we trust the measurement more then the propagated state we will use quite a bit of it. In case we don't we will use less of it. This is exactly what the Kalman gain $\mathbf{K}$ will allow us too do. In order to do so we need too know the uncertainty of the propagated error state $\delta\mathbf{x}$ which we'll denote with the covariance matrix $\mathbf{P}_{k+1}^-$. Next we need too know the uncertainty of the residual $\mathbf{y}_{k+1}$ which we'll denote with the innovation covariance matrix $\mathbf{S}_{k+1}^-$, the Kalman gain can then be computed using the following expression:
 	
-	Although the estimated error vector $\delta\hat{\mathbf{x}}_k$ is reset to zero after each injection step, its associated covariance matrix $\mathbf{P}_k$ continues to grow during prediction due to process noise.
+	\begin{equation*}
+		\mathbf{K} = \mathbf{P}_{k+1}^- \mathbf{H}_{k+1}^T \mathbf{S}_{k+1}^{-1}
+	\end{equation*}
+	
+	Please note $\mathbf{H}_{k+1}$ is the Jacobian matrix of the measurement function $h$. The presence of this term will become more clear in the upcoming sections.
+	
+	\subsubsection{The error state covariance matrix $\mathbf{P}$}
+	
+	Although the estimated error vector $\delta\mathbf{x}_k$ is reset to zero after each injection step, its associated covariance matrix $\mathbf{P}_k$ continues to grow during prediction due to process noise.
 	
 	To derive the propagation of the error state, we expand the non-linear process model $f(\mathbf{x}_k, \mathbf{u}_k)$ around the nominal state $\hat{\mathbf{x}}_k^+$ using a first-order Taylor series approximation:
 	
@@ -615,7 +626,7 @@
 	
 	Consequently, the propagation step focuses entirely on tracking how the error covariance—the uncertainty and cross-correlations—evolves through the system dynamics.
 	
-	\subsubsection{Measurement Residual and Innovation}
+	\subsubsection{The residual covariance matrix $\mathbf{S}$}
 	
 	When a sensor observation arrives, the measurement residual (or innovation) $\mathbf{y}_{k+1}$ measures the discrepancy between the physical observation $\mathbf{z}_{k+1}$ and the expected observation $\hat{\mathbf{z}}_{k+1}$:
 	
@@ -663,13 +674,17 @@
 		&= \mathbf{H}_{k+1} \mathbf{P}_{k+1}^- \mathbf{H}_{k+1}^T + \mathbf{R}_{k+1}
 	\end{align}
 	
-	\subsubsection{Kalman Gain}
+
+	\subsection{Error state estimation}
 	
-	The Kalman gain matrix $\mathbf{K}$ is computed as:
+	Now that we have computed the residual $\mathbf{y}_{k+1}$ and the Kalman gain $\mathbf{K}$ we can estimate the error:
 	
 	\begin{equation}
-		\mathbf{K} = \mathbf{P}_{k+1}^- \mathbf{H}_{k+1}^T \mathbf{S}_{k+1}^{-1}
+		\delta\hat{\mathbf{x}}_{k+1} = \mathbf{K} \mathbf{y}_{k+1}
 	\end{equation}
+	
+	As discussed previously, the Kalman gain provides the optimal weighting between the measured and predicted values to minimize the trace of the error state covariance matrix, thereby yielding the minimum-variance estimate.
+	
 	
 	\subsection{State Injection}
 	
@@ -749,6 +764,92 @@
 	\end{equation*}
 	where $\otimes$ denotes quaternion multiplication and $\delta\mathbf{q}(\bm{\delta\theta}) \approx \begin{bmatrix} 1 & \frac{1}{2}\bm{\delta\theta}^\top \end{bmatrix}^\top$ represents the error quaternion under a small-angle assumption.
 	\vspace{1em}
+	
+	\subsection{The state propagation function $f$}
+	In this section we'll derive the state propagation function $f$. Recall this function propagates our state:
+	\begin{equation*}
+		\mathbf{x}_{k+1} = f(\mathbf{x}_k, \mathbf{u}_k) + \mathbf{w}_k
+	\end{equation*}
+	$f$ is actually a set of functions and we'll derive each piece in the upcoming sections.
+	
+	\subsubsection{The position function}
+	We can predict the next nominal position using following equation:
+	\begin{equation}
+		\mathbf{p}_{k+1} = \mathbf{p}_k + \mathbf{v}_k \Delta t + \mathbf{a}_n \frac{\Delta t^2}{2}
+	\end{equation}
+	Since our $\Delta t$ will be very small we can neglect the last term.
+	\begin{equation}
+		\mathbf{p}_{k+1} = \mathbf{p}_k + \mathbf{v}_k \Delta t
+	\end{equation}
+	
+	
+	\subsubsection{The velocity function}
+	We can predict the next nominal velocity using the following equation:
+	\begin{equation}
+		\mathbf{v}_{k+1} = \mathbf{v}_k + (\mathbf{a}_n + \mathbf{g}) \Delta t
+	\end{equation}
+	where $\mathbf{a}_n$ is the linear acceleration in the navigation (world) frame, and $\mathbf{g}$ is the gravity vector. Since our accelerometer measures the specific force $\mathbf{a}_b$ in the body-fixed frame $b$, we transform it to the navigation frame using the rotation matrix $\mathbf{R}(\hat{\mathbf{q}}_k)$:
+	\begin{equation}
+	\mathbf{v}_{k+1} = \mathbf{v}_k + \left( \mathbf{R}(\hat{\mathbf{q}}_k) \mathbf{a}_b + \mathbf{g} \right) \Delta t
+	\end{equation}
+	
+	\subsubsection{The orientation function}
+	We predict the next nominal orientation quaternion $\mathbf{q}_{k+1}$ by integrating the angular velocity over time. Given the angular velocity measurement $\boldsymbol{\omega}_b$ from the gyroscope in the body frame, the time derivative of the orientation quaternion is defined as:
+	\begin{equation}
+		\dot{\mathbf{q}} = \frac{1}{2} \mathbf{q}_k \otimes \boldsymbol{\omega}_b
+	\end{equation}
+	where $\otimes$ denotes quaternion multiplication, and $\boldsymbol{\omega}_b$ is represented in pure quaternion form $[0, \boldsymbol{\omega}_b^T]^T$. 
+	
+	Assuming the angular velocity remains constant over the sampling interval $\Delta t$, the discrete-time propagation can be written in closed form using the quaternion exponential map:
+	\begin{equation}
+		\mathbf{q}_{k+1} = \mathbf{q}_k \otimes \mathbf{q}\left(\boldsymbol{\omega}_b \Delta t\right)
+	\end{equation}
+	where the delta rotation quaternion $\mathbf{q}\left(\boldsymbol{\omega}_b \Delta t\right)$ is given by:
+	\begin{equation}
+		\mathbf{q}\left(\boldsymbol{\omega}_b \Delta t\right) = 
+		\begin{bmatrix} 
+			\cos\left(\frac{\|\boldsymbol{\omega}_b\| \Delta t}{2}\right) \\ 
+			\frac{\boldsymbol{\omega}_b}{\|\boldsymbol{\omega}_b\|} \sin\left(\frac{\|\boldsymbol{\omega}_b\| \Delta t}{2}\right) 
+		\end{bmatrix}
+	\end{equation}
+	
+	For very small sampling times $\Delta t$, this can be approximated using a first-order Taylor expansion:
+	\begin{equation}
+		\mathbf{q}_{k+1} \approx \mathbf{q}_k \otimes \begin{bmatrix} 1 \\ \frac{1}{2}\boldsymbol{\omega}_b \Delta t \end{bmatrix}
+	\end{equation}
+	
+	\subsubsection{The bias propagation functions}
+	The accelerometer bias $\mathbf{b}_a$ and gyroscope bias $\mathbf{b}_g$ are modeled as random walk processes driven by zero-mean white Gaussian noise. 
+	
+	In the nominal state propagation step, the bias expectations are assumed to remain constant over the sampling period $\Delta t$:
+	\begin{align}
+		\mathbf{b}_{a, k+1} &= \mathbf{b}_{a, k} \\
+		\mathbf{b}_{g, k+1} &= \mathbf{b}_{g, k}
+	\end{align}
+	
+	While the nominal bias values do not change during the prediction step, their uncertainty (covariance) grows over time. This growth is driven by the random walk process noise spectral densities $\boldsymbol{\eta}_{ba}$ and $\boldsymbol{\eta}_{bg}$, which are incorporated directly into the system process noise covariance matrix $\mathbf{Q}_d$:
+	\begin{align}
+		\mathbf{Q}_{b_a} &= \sigma_{ba}^2 \Delta t \, \mathbf{I}_{3\times3} \\
+		\mathbf{Q}_{b_g} &= \sigma_{bg}^2 \Delta t \, \mathbf{I}_{3\times3}
+	\end{align}
+	
+	\subsection{The measurement function $h$}
+	Recall this function translates a vector from the state space to the measurement space, i.e.:
+	\begin{equation}
+		\mathbf{z} = h(\mathbf{x})
+	\end{equation}
+	Let's assume we have following sensors:
+	\begin{itemize}
+		\item GPS sensor which outputs projected position (and sometimes velocity) coordinates $x,y,z$ in the world frame $n$.
+		\item Barometric altitude sensor: measures our altitude by converting pressure to vertical height w.r.t the ground.
+		\item Magnetometer: 3-axis magnetometer outputs a vector pointing to Earths magnetic north.
+		\item Accelerometer: Under the assumption of no linear acceleration this sensor measures earth gravity. 
+	\end{itemize}
+	
+	
+	
+	
+	
 	
 	\subsection{State Transition matrix F}
 	
