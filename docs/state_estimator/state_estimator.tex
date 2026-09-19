@@ -766,11 +766,31 @@
 	\vspace{1em}
 	
 	\subsection{The state propagation function $f$}
-	In this section we'll derive the state propagation function $f$. Recall this function propagates our state:
-	\begin{equation*}
+	In this section, we derive the state propagation function $f$. Recall that this function updates the full nominal state vector $\mathbf{x}_k = [\mathbf{p}_k^T, \mathbf{v}_k^T, \mathbf{q}_k^T, \mathbf{b}_{a,k}^T, \mathbf{b}_{g,k}^T]^T$ over a discrete time step $\Delta t$:
+	\begin{equation}
 		\mathbf{x}_{k+1} = f(\mathbf{x}_k, \mathbf{u}_k) + \mathbf{w}_k
-	\end{equation*}
-	$f$ is actually a set of functions and we'll derive each piece in the upcoming sections.
+	\end{equation}
+	
+	The vector-valued function $f$ is partitioned into component-wise sub-functions according to each state variable:
+	\begin{equation}
+		f(\mathbf{x}_k, \mathbf{u}_k) = 
+		\begin{bmatrix}
+			f_p(\mathbf{x}_k, \mathbf{u}_k) \\
+			f_v(\mathbf{x}_k, \mathbf{u}_k) \\
+			f_q(\mathbf{x}_k, \mathbf{u}_k) \\
+			f_{b_a}(\mathbf{x}_k, \mathbf{u}_k) \\
+			f_{b_g}(\mathbf{x}_k, \mathbf{u}_k)
+		\end{bmatrix} =
+		\begin{bmatrix}
+			\mathbf{p}_k + \mathbf{v}_k \Delta t \\
+			\mathbf{v}_k + \left( \mathbf{R}(\hat{\mathbf{q}}_k)\mathbf{a}_b + \mathbf{g} \right) \Delta t \\
+			\mathbf{q}_k \otimes \mathbf{q}\left(\boldsymbol{\omega}_b \Delta t\right) \\
+			\mathbf{b}_{a, k} \\
+			\mathbf{b}_{g, k}
+		\end{bmatrix}
+	\end{equation}
+	
+	Each sub-function is detailed in the following subsections.
 	
 	\subsubsection{The position function}
 	We can predict the next nominal position using following equation:
@@ -834,21 +854,73 @@
 	\end{align}
 	
 	\subsection{The measurement function $h$}
-	Recall this function translates a vector from the state space to the measurement space, i.e.:
+	
+	The measurement function $h: \mathcal{X} \to \mathcal{Z}$ maps the nominal state vector $\mathbf{x} = [\mathbf{p}^T, \mathbf{v}^T, \mathbf{q}^T, \mathbf{b}_a^T, \mathbf{b}_g^T]^T$ into the expected measurement space $\mathcal{Z}$:
 	\begin{equation}
-		\mathbf{z} = h(\mathbf{x})
+		\mathbf{z} = h(\mathbf{x}) + \mathbf{v}
 	\end{equation}
-	Let's assume we have following sensors:
+	where $\mathbf{v}$ represents zero-mean measurement noise. Depending on the active sensor suite, $h(\mathbf{x})$ is defined as a composite system of sub-functions corresponding to each sensor:
+	\begin{equation}
+		h(\mathbf{x}) = 
+		\begin{bmatrix}
+			h_{\text{GPS}}(\mathbf{x}) \\
+			h_{\text{baro}}(\mathbf{x}) \\
+			h_{\text{mag}}(\mathbf{x}) \\
+			h_{\text{acc}}(\mathbf{x})
+		\end{bmatrix} =
+		\begin{bmatrix}
+			\mathbf{p} \\
+			p_z \\
+			\mathbf{R}(\mathbf{q})^T \mathbf{m}_n \\
+			-\mathbf{R}(\mathbf{q})^T \mathbf{g}_n
+		\end{bmatrix}
+	\end{equation}
+	
+	The individual measurement models are defined as follows:
+	
 	\begin{itemize}
-		\item GPS sensor which outputs projected position (and sometimes velocity) coordinates $x,y,z$ in the world frame $n$.
-		\item Barometric altitude sensor: measures our altitude by converting pressure to vertical height w.r.t the ground.
-		\item Magnetometer: 3-axis magnetometer outputs a vector pointing to Earths magnetic north.
-		\item Accelerometer: Under the assumption of no linear acceleration this sensor measures earth gravity. 
+		\item \textbf{GPS ($\mathbf{z}_{\text{GPS}}$):} Directly measures the 3D position vector in the navigation frame $n$:
+		\begin{equation}
+			h_{\text{GPS}}(\mathbf{x}) = \mathbf{p} = [p_x, p_y, p_z]^T
+		\end{equation}
+		
+		\item \textbf{Barometric Altimeter ($z_{\text{baro}}$):} Measures the 1D vertical height along the $z$-axis of the navigation frame:
+		\begin{equation}
+			h_{\text{baro}}(\mathbf{x}) = p_z
+		\end{equation}
+		
+		\item \textbf{Magnetometer ($\mathbf{z}_{\text{mag}}$):} Measures Earth's magnetic field vector $\mathbf{m}_n$ mapped from the navigation frame to the body-fixed frame $b$ using the conjugate rotation $\mathbf{R}(\mathbf{q})^T$:
+		\begin{equation}
+			h_{\text{mag}}(\mathbf{x}) = \mathbf{R}(\mathbf{q})^T \mathbf{m}_n
+		\end{equation}
+		
+		\item \textbf{Accelerometer ($\mathbf{z}_{\text{acc}}$):} Under quasi-static conditions (negligible body acceleration), the accelerometer measures the reaction to Earth's gravity vector $\mathbf{g}_n$ transformed into the body frame:
+		\begin{equation}
+			h_{\text{acc}}(\mathbf{x}) = -\mathbf{R}(\mathbf{q})^T \mathbf{g}_n
+		\end{equation}
 	\end{itemize}
 	
+	\subsection{Computation of the residual}
 	
+	The innovation (or residual) vector represents the discrepancy between the actual sensor measurements $\mathbf{z}_{k+1}$ and the predicted measurements $h(\hat{\mathbf{x}}_{k+1}^-)$. For vector space components (such as position and velocity), the residual is computed via standard Euclidean subtraction:
+	\begin{equation}
+		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - h(\hat{\mathbf{x}}_{k+1}^-)
+	\end{equation}
 	
+	However, when the measurement space contains rotational quantities—such as orientation quaternions or vector observations transformed by orientation—standard linear subtraction is mathematically invalid. Unit quaternions belong to the non-Euclidean Lie group $SO(3)$, where linear subtraction does not preserve the unit-norm constraint and fails to capture the true angular distance.
 	
+	To properly compute the difference between two rotations, we must use quaternion composition. The rotational residual is defined via the relative rotation (or error rotation) operator, often denoted using the manifold "box-minus" ($\ominus$) notation:
+	\begin{equation}
+		\delta \mathbf{q} = \mathbf{z}_{\text{rot}} \ominus h_{\text{rot}}(\hat{\mathbf{x}}_{k+1}^-) = \mathbf{z}_{\text{rot}} \otimes h_{\text{rot}}(\hat{\mathbf{x}}_{k+1}^-)^{-1}
+	\end{equation}
+	where $\otimes$ denotes quaternion multiplication and $(\cdot)^{-1}$ denotes the quaternion conjugate.
+	
+	For injection into the linear Kalman filter framework, this quaternion error $\delta \mathbf{q} = [q_w, \delta \boldsymbol{\theta}^T/2]^T$ is typically mapped to a 3D minimal vector space representation $\delta \boldsymbol{\theta} \in \mathbb{R}^3$ (using the vector part or axis-angle mapping):
+	\begin{equation}
+		\mathbf{y}_{\text{rot}} = 2 \cdot \text{vec}(\delta \mathbf{q}) \approx \delta \boldsymbol{\theta}
+	\end{equation}
+	
+	Thus, the overall residual vector $\mathbf{y}_{k+1}$ is constructed block-wise, employing Euclidean subtraction for vector quantities and rotational manifold differences for angular quantities.
 	
 	
 	\subsection{State Transition matrix F}
