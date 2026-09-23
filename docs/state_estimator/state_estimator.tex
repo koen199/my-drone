@@ -1325,5 +1325,81 @@
 		\end{bmatrix}
 	\end{equation*}
 	
+	\subsection{The process noise covariance matrix $\mathbf{Q}$}
+
+	
+	Consider the continuous error-state dynamics driven by physical IMU noise $\mathbf{w}(t) \in \mathbb{R}^{12}$:
+	\begin{equation}
+		\delta\dot{\mathbf{x}}(t) = \mathbf{F}_c \, \delta\mathbf{x}(t) + \mathbf{L}_c \, \mathbf{w}(t)
+	\end{equation}
+	
+	\subsubsection{Role and Definition of $\mathbf{L}_c$ and Continuous Noise $\mathbf{Q}_c$}
+	
+	The raw continuous physical noise vector $\mathbf{w}(t) = [\mathbf{n}_a^T, \, \mathbf{n}_g^T, \, \mathbf{w}_{ba}^T, \, \mathbf{w}_{bg}^T]^T \in \mathbb{R}^{12}$ represents the white noise processes driving the sensors, modeled by the continuous Power Spectral Density (PSD) covariance matrix $\mathbf{Q}_c \in \mathbb{R}^{12 \times 12}$:
+	
+	\begin{equation}
+		\mathbf{Q}_c = \begin{bmatrix}
+			\sigma_a^2 \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \sigma_g^2 \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \sigma_{ba}^2 \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \sigma_{bg}^2 \mathbf{I}_{3 \times 3}
+		\end{bmatrix}
+	\end{equation}
+	
+	where:
+	\begin{itemize}
+		\item $\sigma_a^2$: Accelerometer measurement noise density $\left[\frac{\text{m}^2}{\text{s}^3}\right]$.
+		\item $\sigma_g^2$: Gyroscope measurement noise density $\left[\frac{\text{rad}^2}{\text{s}}\right]$.
+		\item $\sigma_{ba}^2$: Accelerometer bias random walk noise density $\left[\frac{\text{m}^2}{\text{s}^5}\right]$.
+		\item $\sigma_{bg}^2$: Gyroscope bias random walk noise density $\left[\frac{\text{rad}^2}{\text{s}^3}\right]$.
+	\end{itemize}
+	
+	The matrix $\mathbf{L}_c \in \mathbb{R}^{15 \times 12}$ maps these continuous noise sources into the error-state derivative vector $\delta\dot{\mathbf{x}} = [\delta\dot{\mathbf{p}}^T, \, \delta\dot{\mathbf{v}}^T, \, \delta\dot{\boldsymbol{\theta}}^T, \, \delta\dot{\mathbf{b}}_a^T, \, \delta\dot{\mathbf{b}}_g^T]^T$:
+	
+	\begin{equation}
+		\mathbf{L}_c = \begin{bmatrix}
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			-\mathbf{R}(\hat{\mathbf{q}}) & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & -\mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{I}_{3 \times 3}
+		\end{bmatrix}
+	\end{equation}
+	
+	The mapping from noise sources to error-state derivatives is defined as follows:
+	\begin{itemize}
+		\item \textbf{Position Error ($\delta\dot{\mathbf{p}}$):} No direct noise source ($\mathbf{0}_{3 \times 3}$). Position is pure kinematic integration ($\delta\dot{\mathbf{p}} = \delta\mathbf{v}$); uncertainty propagates via system matrix $\mathbf{F}_c$.
+		\item \textbf{Velocity Error ($\delta\dot{\mathbf{v}}$):} Accelerometer white noise $\mathbf{n}_a$ maps through the rotated body frame matrix $-\mathbf{R}(\hat{\mathbf{q}})$.
+		\item \textbf{Attitude Error ($\delta\dot{\boldsymbol{\theta}}$):} Gyroscope white noise $\mathbf{n}_g$ maps directly into body orientation rates via $-\mathbf{I}_{3 \times 3}$.
+		\item \textbf{Accelerometer Bias Error ($\delta\dot{\mathbf{b}}_a$):} Accelerometer bias random walk noise $\mathbf{w}_{ba}$ maps directly via $\mathbf{I}_{3 \times 3}$.
+		\item \textbf{Gyroscope Bias Error ($\delta\dot{\mathbf{b}}_g$):} Gyroscope bias random walk noise $\mathbf{w}_{bg}$ maps directly via $\mathbf{I}_{3 \times 3}$.
+	\end{itemize}
+	
+	\subsubsection{First-Order Discretization}
+	
+	Using a first-order Euler expansion $\delta\mathbf{x}_{k+1} = \delta\mathbf{x}_k + \delta\dot{\mathbf{x}}_k \Delta t$:
+	\begin{equation}
+		\delta\mathbf{x}_{k+1} = \delta\mathbf{x}_k + \left( \mathbf{F}_c \delta\mathbf{x}_k + \mathbf{L}_c \mathbf{w}_k \right) \Delta t = \left( \mathbf{I} + \mathbf{F}_c \Delta t \right) \delta\mathbf{x}_k + \mathbf{L}_c \mathbf{w}_k \Delta t
+	\end{equation}
+	
+	Extracting the discrete process noise perturbation $\boldsymbol{\eta}_k = \mathbf{L}_c \mathbf{w}_k \Delta t$, we compute $\mathbf{Q}_k = \mathbb{E}[\boldsymbol{\eta}_k \boldsymbol{\eta}_k^T]$ using discrete noise scaling $\mathbb{E}[\mathbf{w}_k \mathbf{w}_k^T] = \frac{\mathbf{Q}_c}{\Delta t}$:
+	\begin{equation}
+		\mathbf{Q}_k = \mathbb{E}\left[ \left(\mathbf{L}_c \mathbf{w}_k \Delta t\right) \left(\mathbf{L}_c \mathbf{w}_k \Delta t\right)^T \right] = \mathbf{L}_c \left( \frac{\mathbf{Q}_c}{\Delta t} \Delta t^2 \right) \mathbf{L}_c^T = \mathbf{L}_c \mathbf{Q}_c \mathbf{L}_c^T \Delta t
+	\end{equation}
+	
+	Evaluating the product (noting $\mathbf{R}\mathbf{R}^T = \mathbf{I}_3$) yields the full $15 \times 15$ block-diagonal discrete covariance matrix:
+	\begin{equation}
+		\mathbf{Q}_k = \begin{bmatrix}
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \sigma_a^2 \Delta t \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \sigma_g^2 \Delta t \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \sigma_{ba}^2 \Delta t \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
+			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \sigma_{bg}^2 \Delta t \mathbf{I}_{3 \times 3}
+		\end{bmatrix}
+	\end{equation}
+	
+	
+	
+	
 	
 \end{document}
