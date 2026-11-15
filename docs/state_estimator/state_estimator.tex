@@ -1284,96 +1284,251 @@
 		\end{bmatrix}
 	\end{equation*}
 	
-	\subsubsection{Accelerometer Observation Matrix}
-	A 3-axis accelerometer measures the specific force vector $\mathbf{a}_b$ directly in the drone's body frame ($b$). Under quasi-static conditions ($\mathbf{a}_{\text{lin}} \approx \mathbf{0}$), this measurement corresponds to the upward reaction force opposing Earth's gravity:
-	\begin{equation*}
-		\mathbf{z}_{\text{acc}} = \mathbf{a}_b + \mathbf{v}_{\text{acc}}
-	\end{equation*}
-	
-	Given the known gravity reference vector $\mathbf{g}_n = \begin{bmatrix} 0 & 0 & -g \end{bmatrix}^\top$ in the East-North-Up (ENU) world frame ($n$), where $g \approx 9.81 \text{ m/s}^2$, the true body-frame specific force relates to orientation via:
-	\begin{equation*}
-		\mathbf{a}_b = -\mathbf{R}(\mathbf{q})^\top \mathbf{g}_n
-	\end{equation*}
-	
-	Using the orientation error approximation $\mathbf{R}(\mathbf{q}) \approx \mathbf{R}(\hat{\mathbf{q}}) \left( \mathbf{I}_{3 \times 3} + [\bm{\delta\theta}]_\times \right)$, taking the matrix transpose yields $\mathbf{R}(\mathbf{q})^\top \approx \left( \mathbf{I}_{3 \times 3} - [\bm{\delta\theta}]_\times \right) \mathbf{R}(\hat{\mathbf{q}})^\top$. Substituting this into the measurement equation:
-	\begin{align*}
-		h_{\text{acc}}(\mathbf{x}) &= -\left( \mathbf{I}_{3 \times 3} - [\bm{\delta\theta}]_\times \right) \mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n \\
-		&= -\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n + [\bm{\delta\theta}]_\times \left( -\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n \right)
-	\end{align*}
-	
-	Defining the nominal predicted accelerometer measurement as $\hat{\mathbf{a}}_b = -\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n$ and applying skew-symmetric anti-commutativity ($[\mathbf{a}]_\times \mathbf{b} = -[\mathbf{b}]_\times \mathbf{a}$), the expression reduces to:
-	\begin{equation*}
-		h_{\text{acc}}(\mathbf{x}) = \hat{\mathbf{a}}_b + [\hat{\mathbf{a}}_b]_\times \bm{\delta\theta}
-	\end{equation*}
-	
-	Note that $\hat{\mathbf{a}}_b$ is the predicted body-frame specific force, computed by projecting the negative Earth gravity vector $-\mathbf{g}_n$ into the body frame using the current nominal orientation estimate $\hat{\mathbf{q}}_k$. Because accelerometers measure total specific force $\mathbf{f}_b = \mathbf{a}_{\text{lin}} - \mathbf{R}(\mathbf{q})^\top \mathbf{g}_n$, body accelerations ($\mathbf{a}_{\text{lin}} \neq \mathbf{0}$) distort the gravity direction. To prevent roll and pitch degradation during dynamic maneuvers, the update is gated or the measurement covariance matrix $\mathbf{R}_{\text{acc}}$ is inflated when $|\|\mathbf{z}_{\text{acc}}\| - g| > \epsilon$.
-	
-	Evaluating partial derivatives with respect to sub-vectors of $\delta\mathbf{x}_k$:
-	\begin{align*}
-		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{p}} &= \mathbf{0}_{3 \times 3} \\
-		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{v}} &= \mathbf{0}_{3 \times 3} \\
-		\frac{\partial h_{\text{acc}}}{\partial \bm{\delta\theta}} &= [\hat{\mathbf{a}}_b]_\times = \left[ -\mathbf{R}(\hat{\mathbf{q}}_k)^\top \mathbf{g}_n \right]_\times \\
-		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{b}_g} &= \mathbf{0}_{3 \times 3} \\
-		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{b}_a} &= \mathbf{0}_{3 \times 3}
-	\end{align*}
-	
-	Arranging these partial derivatives forms the $3 \times 15$ accelerometer observation matrix $\mathbf{H}_{\text{acc}, k}$:
-	\begin{equation*}
-		\mathbf{H}_{\text{acc}, k} = 
-		\begin{bmatrix}
-			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \left[ -\mathbf{R}(\hat{\mathbf{q}}_k)^\top \mathbf{g}_n \right]_\times & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3}
-		\end{bmatrix}
-	\end{equation*}
-	
-	\subsection{The process noise covariance matrix $\mathbf{Q}$}
+		
 
+	\subsubsection{Accelerometer Observation Matrix}
 	
-	Consider the continuous error-state dynamics driven by physical IMU noise $\mathbf{w}(t) \in \mathbb{R}^{12}$:
+	A 3-axis accelerometer measures the specific force acting on the sensor directly in the drone's body frame ($b$). Under quasi-static conditions, where linear acceleration is negligible ($\mathbf{a}_{\text{lin}} \approx \mathbf{0}$), the accelerometer measures the upward reaction force opposing Earth's gravity.
+	
+	The raw accelerometer measurement is denoted by $\mathbf{z}_{\text{acc}}$. It represents the actual sensor reading, including the accelerometer bias and measurement noise. Its measurement model is:
+	
+	\begin{equation*}
+		\mathbf{z}_{\text{acc}} =
+		-\mathbf{R}(\mathbf{q})^\top \mathbf{g}_n
+		+ \mathbf{b}_a
+		+ \mathbf{v}_{\text{acc}}
+	\end{equation*}
+	
+	where $\mathbf{q}$ is the true drone orientation, $\mathbf{g}_n = [0 \quad 0 \quad -g]^\top$ is the gravity reference vector in the East-North-Up (ENU) world frame ($n$), with $g \approx 9.81 \text{ m/s}^2$, $\mathbf{b}_a$ is the accelerometer bias, and $\mathbf{v}_{\text{acc}}$ represents measurement noise.
+	
+	\paragraph{Relating the measured and predicted gravity vectors}
+	
+	The filter maintains an estimate of the accelerometer bias, denoted by $\hat{\mathbf{b}}_a$. Before comparing the sensor measurement with the predicted specific force, we compensate for this estimated bias by subtracting it from the raw measurement:
+	
+	\begin{equation*}
+		\mathbf{z}_{\text{acc,corr}} =
+		\mathbf{z}_{\text{acc}} - \hat{\mathbf{b}}_a
+	\end{equation*}
+	
+	The resulting measurement is a bias-corrected estimate of the gravity-induced specific force. It still contains measurement noise and any remaining accelerometer bias estimation error.
+	
+	The filter also predicts what the accelerometer should measure based on its current nominal orientation estimate $\hat{\mathbf{q}}$:
+	
+	\begin{equation*}
+		\hat{\mathbf{a}}_b =
+		-\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n
+	\end{equation*}
+	
+	Both vectors are now expressed in the body frame. Their difference defines the accelerometer measurement residual:
+	
+	\begin{equation*}
+		\mathbf{r}_{\text{acc}} =
+		\mathbf{z}_{\text{acc,corr}} - \hat{\mathbf{a}}_b
+	\end{equation*}
+	
+	This residual represents the discrepancy between the measured and predicted specific force. Under quasi-static conditions, it primarily results from errors in the estimated orientation and accelerometer bias.
+	
+	\paragraph{Linearizing the attitude error}
+	
+	To express the measurement residual in terms of the attitude error, we use the small-angle approximation. With the right-multiplicative attitude error convention, the true rotation matrix can be approximated around the nominal orientation as:
+	
+	\begin{equation*}
+		\mathbf{R}(\mathbf{q}) \approx
+		\mathbf{R}(\hat{\mathbf{q}})
+		\left(\mathbf{I}_{3\times3}
+		+ [\delta\boldsymbol{\theta}]_\times\right)
+	\end{equation*}
+	
+	where $\delta\boldsymbol{\theta}$ is the small attitude error rotation vector and $[\cdot]_\times$ denotes the skew-symmetric matrix corresponding to the cross product.
+	
+	Taking the transpose of both sides and using the property $(\mathbf{A}\mathbf{B})^\top = \mathbf{B}^\top\mathbf{A}^\top$, we obtain:
+	
+	\begin{align*}
+		\mathbf{R}(\mathbf{q})^\top
+		&\approx
+		\left(\mathbf{I}_{3\times3}
+		+ [\delta\boldsymbol{\theta}]_\times\right)^\top
+		\mathbf{R}(\hat{\mathbf{q}})^\top \\[4pt]
+		&=
+		\left(\mathbf{I}_{3\times3}
+		+ [\delta\boldsymbol{\theta}]_\times^\top\right)
+		\mathbf{R}(\hat{\mathbf{q}})^\top
+	\end{align*}
+	
+	Since the transpose of a skew-symmetric matrix equals its negative,
+	
+	\begin{equation*}
+		[\delta\boldsymbol{\theta}]_\times^\top
+		= -[\delta\boldsymbol{\theta}]_\times
+	\end{equation*}
+	
+	the expression becomes:
+	
 	\begin{equation}
-		\delta\dot{\mathbf{x}}(t) = \mathbf{F}_c \, \delta\mathbf{x}(t) + \mathbf{L}_c \, \mathbf{w}(t)
+		\boxed{
+			\mathbf{R}(\mathbf{q})^\top \approx
+			\left(\mathbf{I}_{3\times3}
+			- [\delta\boldsymbol{\theta}]_\times\right)
+			\mathbf{R}(\hat{\mathbf{q}})^\top
+		}
 	\end{equation}
 	
-	\subsubsection{Role and Definition of $\mathbf{L}_c$ and Continuous Noise $\mathbf{Q}_c$}
+	We now substitute this approximation into the raw accelerometer measurement model and subtract the estimated accelerometer bias:
 	
-	The raw continuous physical noise vector $\mathbf{w}(t) = [\mathbf{n}_a^T, \, \mathbf{n}_g^T, \, \mathbf{w}_{ba}^T, \, \mathbf{w}_{bg}^T]^T \in \mathbb{R}^{12}$ represents the white noise processes driving the sensors, modeled by the continuous Power Spectral Density (PSD) covariance matrix $\mathbf{Q}_c \in \mathbb{R}^{12 \times 12}$:
+	\begin{align*}
+		\mathbf{z}_{\text{acc,corr}}
+		&\approx
+		-\left(\mathbf{I}
+		- [\delta\boldsymbol{\theta}]_\times\right)
+		\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{g}_n
+		+ \mathbf{b}_a
+		- \hat{\mathbf{b}}_a
+		+ \mathbf{v}_{\text{acc}} \\[6pt]
+		&=
+		-\mathbf{R}(\hat{\mathbf{q}})^\top\mathbf{g}_n
+		+ [\delta\boldsymbol{\theta}]_\times
+		\mathbf{R}(\hat{\mathbf{q}})^\top\mathbf{g}_n
+		+ \mathbf{b}_a
+		- \hat{\mathbf{b}}_a
+		+ \mathbf{v}_{\text{acc}}
+	\end{align*}
+	
+	We define the accelerometer bias estimation error as:
+	
+	\begin{equation*}
+		\delta\mathbf{b}_a =
+		\mathbf{b}_a - \hat{\mathbf{b}}_a
+	\end{equation*}
+	
+	Next, recall the definition of the predicted specific force:
+	
+	\begin{equation*}
+		\hat{\mathbf{a}}_b =
+		-\mathbf{R}(\hat{\mathbf{q}})^\top\mathbf{g}_n
+	\end{equation*}
+	
+	This definition allows us to replace the rotation matrix multiplied by gravity:
+	
+	\begin{equation*}
+		\mathbf{R}(\hat{\mathbf{q}})^\top\mathbf{g}_n
+		= -\hat{\mathbf{a}}_b
+	\end{equation*}
+	
+	Applying these substitutions to the previous expression gives:
+	
+	\begin{align*}
+		\mathbf{z}_{\text{acc,corr}}
+		&\approx
+		\hat{\mathbf{a}}_b
+		+ [\delta\boldsymbol{\theta}]_\times
+		(-\hat{\mathbf{a}}_b)
+		+ \delta\mathbf{b}_a
+		+ \mathbf{v}_{\text{acc}} \\[4pt]
+		&=
+		\hat{\mathbf{a}}_b
+		- [\delta\boldsymbol{\theta}]_\times
+		\hat{\mathbf{a}}_b
+		+ \delta\mathbf{b}_a
+		+ \mathbf{v}_{\text{acc}}
+	\end{align*}
+	
+	At this point, the rotation matrix is no longer explicitly present because its effect is already contained in the predicted specific force $\hat{\mathbf{a}}_b$.
+	
+	Using the anti-commutativity property of the cross product,
+	
+	\begin{equation*}
+		\mathbf{a}\times\mathbf{b}
+		= -\mathbf{b}\times\mathbf{a}
+	\end{equation*}
+	
+	we can rewrite the attitude error term as:
+	
+	\begin{equation*}
+		-[\delta\boldsymbol{\theta}]_\times
+		\hat{\mathbf{a}}_b
+		=
+		[\hat{\mathbf{a}}_b]_\times
+		\delta\boldsymbol{\theta}
+	\end{equation*}
+	
+	Therefore, the bias-corrected measurement becomes:
 	
 	\begin{equation}
-		\mathbf{Q}_c = \begin{bmatrix}
-			\sigma_a^2 \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
-			\mathbf{0}_{3 \times 3} & \sigma_g^2 \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
-			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \sigma_{ba}^2 \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
-			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \sigma_{bg}^2 \mathbf{I}_{3 \times 3}
-		\end{bmatrix}
+		\boxed{
+			\mathbf{z}_{\text{acc,corr}}
+			\approx
+			\hat{\mathbf{a}}_b
+			+ [\hat{\mathbf{a}}_b]_\times
+			\delta\boldsymbol{\theta}
+			+ \delta\mathbf{b}_a
+			+ \mathbf{v}_{\text{acc}}
+		}
 	\end{equation}
 	
-	where:
-	\begin{itemize}
-		\item $\sigma_a^2$: Accelerometer measurement noise density $\left[\frac{\text{m}^2}{\text{s}^3}\right]$.
-		\item $\sigma_g^2$: Gyroscope measurement noise density $\left[\frac{\text{rad}^2}{\text{s}}\right]$.
-		\item $\sigma_{ba}^2$: Accelerometer bias random walk noise density $\left[\frac{\text{m}^2}{\text{s}^5}\right]$.
-		\item $\sigma_{bg}^2$: Gyroscope bias random walk noise density $\left[\frac{\text{rad}^2}{\text{s}^3}\right]$.
-	\end{itemize}
-	
-	The matrix $\mathbf{L}_c \in \mathbb{R}^{15 \times 12}$ maps these continuous noise sources into the error-state derivative vector $\delta\dot{\mathbf{x}} = [\delta\dot{\mathbf{p}}^T, \, \delta\dot{\mathbf{v}}^T, \, \delta\dot{\boldsymbol{\theta}}^T, \, \delta\dot{\mathbf{b}}_a^T, \, \delta\dot{\mathbf{b}}_g^T]^T$:
+	Subtracting the predicted specific force $\hat{\mathbf{a}}_b$ from both sides gives the final linearized residual relationship:
 	
 	\begin{equation}
-		\mathbf{L}_c = \begin{bmatrix}
-			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
-			-\mathbf{R}(\hat{\mathbf{q}}) & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
-			\mathbf{0}_{3 \times 3} & -\mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
-			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{I}_{3 \times 3} & \mathbf{0}_{3 \times 3} \\
-			\mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{0}_{3 \times 3} & \mathbf{I}_{3 \times 3}
-		\end{bmatrix}
+		\boxed{
+			\mathbf{r}_{\text{acc}} \approx
+			[\hat{\mathbf{a}}_b]_\times
+			\delta\boldsymbol{\theta}
+			+ \delta\mathbf{b}_a
+			+ \mathbf{v}_{\text{acc}}
+		}
 	\end{equation}
 	
-	The mapping from noise sources to error-state derivatives is defined as follows:
-	\begin{itemize}
-		\item \textbf{Position Error ($\delta\dot{\mathbf{p}}$):} No direct noise source ($\mathbf{0}_{3 \times 3}$). Position is pure kinematic integration ($\delta\dot{\mathbf{p}} = \delta\mathbf{v}$); uncertainty propagates via system matrix $\mathbf{F}_c$.
-		\item \textbf{Velocity Error ($\delta\dot{\mathbf{v}}$):} Accelerometer white noise $\mathbf{n}_a$ maps through the rotated body frame matrix $-\mathbf{R}(\hat{\mathbf{q}})$.
-		\item \textbf{Attitude Error ($\delta\dot{\boldsymbol{\theta}}$):} Gyroscope white noise $\mathbf{n}_g$ maps directly into body orientation rates via $-\mathbf{I}_{3 \times 3}$.
-		\item \textbf{Accelerometer Bias Error ($\delta\dot{\mathbf{b}}_a$):} Accelerometer bias random walk noise $\mathbf{w}_{ba}$ maps directly via $\mathbf{I}_{3 \times 3}$.
-		\item \textbf{Gyroscope Bias Error ($\delta\dot{\mathbf{b}}_g$):} Gyroscope bias random walk noise $\mathbf{w}_{bg}$ maps directly via $\mathbf{I}_{3 \times 3}$.
-	\end{itemize}
+	This equation establishes the linear relationship between the measurement residual, the attitude error and the accelerometer bias estimation error. The cross-product matrix $[\hat{\mathbf{a}}_b]_\times$ maps a small attitude error into the corresponding change in the predicted specific force vector in the body frame. The bias estimation error contributes an additional term to the residual.
+	
+	\paragraph{Constructing the observation matrix}
+	
+	The Kalman filter uses this linearized residual model to construct the observation Jacobian. Taking the partial derivatives with respect to the error-state components gives:
+	
+	\begin{align*}
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{p}}
+		&= \mathbf{0}_{3\times3} \\[4pt]
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{v}}
+		&= \mathbf{0}_{3\times3} \\[4pt]
+		\frac{\partial h_{\text{acc}}}{\partial \delta\boldsymbol{\theta}}
+		&= [\hat{\mathbf{a}}_b]_\times \\[4pt]
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{b}_a}
+		&= \mathbf{I}_{3\times3} \\[4pt]
+		\frac{\partial h_{\text{acc}}}{\partial \delta\mathbf{b}_g}
+		&= \mathbf{0}_{3\times3}
+	\end{align*}
+	
+	Arranging these partial derivatives forms the $3\times15$ accelerometer observation matrix:
+	
+	\begin{equation}
+		\boxed{
+			\mathbf{H}_{\text{acc},k} =
+			\begin{bmatrix}
+				\mathbf{0}_{3\times3} &
+				\mathbf{0}_{3\times3} &
+				[\hat{\mathbf{a}}_b]_\times &
+				\mathbf{I}_{3\times3} &
+				\mathbf{0}_{3\times3}
+			\end{bmatrix}
+		}
+	\end{equation}
+	
+	\paragraph{Practical considerations}
+	
+	The accelerometer measures total specific force, not gravity alone. During dynamic manoeuvres, linear acceleration contaminates the gravity observation and can therefore introduce incorrect attitude corrections.
+	
+	To reduce this effect, the accelerometer update should be gated or its measurement covariance $\mathbf{R}_{\text{acc}}$ inflated when the bias-corrected acceleration magnitude deviates significantly from gravity:
+	
+	\begin{equation*}
+		\left|\|\mathbf{z}_{\text{acc,corr}}\|-g\right| > \epsilon
+	\end{equation*}
+	
+	This is a useful heuristic for identifying periods of significant linear acceleration, although it cannot detect every dynamic acceleration condition.
+	
+	Finally, gravity provides only two independent orientation constraints. Rotation around the gravity direction does not change the measured gravity vector. Consequently, this observation can correct roll and pitch errors, but it cannot independently determine yaw.
+
+
+
+
+
 	
 	\subsubsection{First-Order Discretization}
 	
@@ -1398,8 +1553,72 @@
 		\end{bmatrix}
 	\end{equation}
 	
+	\subsection{The measurement noise covariance matrix $\mathbf{R}$}
 	
+	Consider the discrete-time observation model incorporating multi-sensor updates:
+	\begin{equation}
+		\mathbf{y}_{k+1} = \mathbf{z}_{k+1} - \mathbf{h}(\hat{\mathbf{x}}_{k+1}^-) = \mathbf{H}_{k+1} \delta\mathbf{x}_{k+1} + \mathbf{v}_{k+1}
+	\end{equation}
 	
+	The vector $\mathbf{v}_{k+1}$ represents discrete-time measurement noise perturbing true observations. Unlike continuous process noise driving system dynamics, discrete sensor updates reflect snapshot or discrete sample observations. The discrete measurement noise covariance matrix $\mathbf{R}_{k+1}$ is defined directly as:
 	
+	\begin{equation}
+		\mathbf{R}_{k+1} = \mathbb{E}\left[ \mathbf{v}_{k+1} \mathbf{v}_{k+1}^T \right]
+	\end{equation}
 	
+	Depending on which sensor update is processed at time step $k+1$, $\mathbf{R}_{k+1}$ assumes a specific structure corresponding to that sensor's noise characteristics and error models.
+	
+	\subsubsection{Sensor Noise Formulations}
+	
+	\paragraph{1. GNSS / GPS Position Update}
+	The GNSS receiver provides 3D absolute position updates $\mathbf{z}_{\text{GPS}} \in \mathbb{R}^3$. The noise vector $\mathbf{v}_{\text{GPS}} = [n_{p,x}, \, n_{p,y}, \, n_{p,z}]^T$ represents epoch solution error, yielding:
+	
+	\begin{equation}
+		\mathbf{R}_{\text{GPS}} = \begin{bmatrix}
+			\sigma_{p,x}^2 & 0 & 0 \\
+			0 & \sigma_{p,y}^2 & 0 \\
+			0 & 0 & \sigma_{p,z}^2
+		\end{bmatrix} = \sigma_{\text{GPS}}^2 \mathbf{I}_{3 \times 3}
+	\end{equation}
+	
+	where $\sigma_{p,x}^2, \sigma_{p,y}^2, \sigma_{p,z}^2 \left[\text{m}^2\right]$ are position measurement error variances. Because GNSS position fixes are discrete snapshot solutions calculated internally by the receiver's navigation engine, $\mathbf{R}_{\text{GPS}}$ is invariant to the filter time step $\Delta t$.
+	
+	\paragraph{2. Barometer Altitude Update}
+	The barometer provides a scalar altitude update $z_{\text{baro}} \in \mathbb{R}^1$ derived from static pressure. The measurement noise scalar $v_{\text{baro}} \sim \mathcal{N}(0, \sigma_{\text{baro}}^2)$ defines a $1 \times 1$ covariance matrix:
+	
+	\begin{equation}
+		\mathbf{R}_{\text{baro}} = \sigma_{\text{baro}}^2
+	\end{equation}
+	
+	where $\sigma_{\text{baro}}^2 \left[\text{m}^2\right]$ represents high-frequency pressure fluctuation and sensor noise variance. Static pressure sensing is an instantaneous continuous measurement; if pre-filtered over sampling window $T_s$, the variance scales as $\sigma_{\text{baro}}^2 = \frac{N_{\text{baro}}^2}{2 T_s}$, where $N_{\text{baro}}$ is the pressure noise spectral density.
+	
+	\paragraph{3. Magnetometer Heading / Field Update}
+	The 3D magnetometer measures local magnetic field components $\mathbf{z}_{\text{mag}} \in \mathbb{R}^3$ (or a derived magnetic heading scalar $\psi_{\text{mag}} \in \mathbb{R}^1$). For a full 3D magnetic flux measurement vector $\mathbf{v}_{\text{mag}} = [n_{m,x}, \, n_{m,y}, \, n_{m,z}]^T$:
+	
+	\begin{equation}
+		\mathbf{R}_{\text{mag}} = \begin{bmatrix}
+			\sigma_{m,x}^2 & 0 & 0 \\
+			0 & \sigma_{m,y}^2 & 0 \\
+			0 & 0 & \sigma_{m,z}^2
+		\end{bmatrix} = \sigma_{\text{mag}}^2 \mathbf{I}_{3 \times 3}
+	\end{equation}
+	
+	where $\sigma_{\text{mag}}^2 \left[\text{Gauss}^2\right]$ (or $\left[\mu\text{T}^2\right]$) represents wideband sensor noise and unmodeled local hard/soft-iron distortion fluctuations. For a single heading observation, $\mathbf{R}_{\text{mag}} = \sigma_{\psi}^2 \left[\text{rad}^2\right]$.
+	
+	\paragraph{4. Accelerometer Gravity Alignment Update}
+	When using stationary accelerometer readings $\mathbf{z}_{\text{acc}} \in \mathbb{R}^3$ as a tilt update (measuring gravity $\mathbf{g}$ during stationary or non-accelerated flight phases):
+	
+	\begin{equation}
+		\mathbf{R}_{\text{acc}} = \begin{bmatrix}
+			\sigma_{a,x}^2 & 0 & 0 \\
+			0 & \sigma_{a,y}^2 & 0 \\
+			0 & 0 & \sigma_{a,z}^2
+		\end{bmatrix} = \sigma_{\text{acc, meas}}^2 \mathbf{I}_{3 \times 3}
+	\end{equation}
+	
+	where $\sigma_{\text{acc, meas}}^2 \left[\frac{\text{m}^2}{\text{s}^4}\right]$ represents the discrete measurement noise variance of the accelerometer. For continuous MEMS sensors sampled at rate $f_s = \frac{1}{\Delta t}$ with bandwidth $B \approx \frac{f_s}{2}$, discrete variance scales with sampling interval $\Delta t$:
+	\begin{equation}
+		\sigma_{\text{acc, meas}}^2 = \frac{\sigma_a^2}{\Delta t}
+	\end{equation}
+	where $\sigma_a^2 \left[\frac{\text{m}^2}{\text{s}^3}\right]$ is the continuous accelerometer velocity random walk Power Spectral Density (PSD).
 \end{document}

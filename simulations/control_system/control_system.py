@@ -26,9 +26,10 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from simulations.math_helper import euler_to_rotation_matrix
+
 from .altitude import AltitudeController
 from .attitude import AttitudeController
-from .euler import euler_to_rotation_matrix
 from .geometry import QuadrotorGeometry
 from .mixer import Mixer
 from .rate import GRAVITY, AngularRateController, VerticalSpeedController

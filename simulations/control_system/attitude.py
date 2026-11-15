@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .euler import euler_to_rotation_matrix, unskew
+from simulations.math_helper import euler_to_rotation_matrix, unskew
 
 
 def orientation_error(R_measured: np.ndarray, R_desired: np.ndarray) -> np.ndarray:

@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from .frames import CoordinateSystem, Force, Torque, Vector
-from .quaternion import (
+from simulations.math_helper import (
     quaternion_derivative,
     quaternion_normalize,
     quaternion_to_rotation_matrix,

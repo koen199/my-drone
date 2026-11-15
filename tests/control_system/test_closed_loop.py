@@ -14,7 +14,7 @@ from simulations.control_system.control_system import (
     Setpoint,
     StateEstimate,
 )
-from simulations.control_system.euler import rotation_matrix_to_euler
+from simulations.math_helper import quaternion_from_axis_angle, quaternion_multiply, rotation_matrix_to_euler
 from simulations.control_system.propellers import Propellers
 from simulations.rigid_body_simulator.frames import CoordinateSystem, Force, Vector
 from simulations.rigid_body_simulator.rigid_body import RigidBody
@@ -177,8 +177,6 @@ def test_attitude_step_is_tracked(geometry, mass, inertia, setpoint):
 
 def test_recovers_from_a_large_initial_attitude_upset(geometry, mass, inertia):
     """Released at 40 deg roll / -30 deg pitch, the drone must level out."""
-    from simulations.rigid_body_simulator.quaternion import quaternion_from_axis_angle, quaternion_multiply
-
     upset = quaternion_multiply(
         quaternion_from_axis_angle([0.0, 1.0, 0.0], np.deg2rad(-30.0)),
         quaternion_from_axis_angle([1.0, 0.0, 0.0], np.deg2rad(40.0)),

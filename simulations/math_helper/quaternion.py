@@ -1,7 +1,7 @@
 """
-Stateless quaternion math for the rigid body simulator.
+Stateless quaternion math shared by the simulator, controller and estimator.
 
-Conventions used throughout this package:
+Conventions:
     - Quaternions are scalar-first numpy arrays [w, x, y, z] of unit norm.
     - A state quaternion p represents the orientation of the body frame (b)
       relative to the world/navigation frame (n).
@@ -73,3 +73,36 @@ def quaternion_derivative(q: np.ndarray, omega_n: np.ndarray) -> np.ndarray:
         [-np.dot(omega_n, p_vec)],
         p0 * omega_n + np.cross(omega_n, p_vec),
     ])
+
+
+def quaternion_exp(rotation_vector: np.ndarray) -> np.ndarray:
+    """Unit quaternion q(phi) for a rotation vector phi (axis * angle).
+
+    Closed form [cos(|phi|/2), phi/|phi| sin(|phi|/2)]; falls back to the
+    first-order [1, phi/2] (normalised) for vanishing angles.
+    """
+    rotation_vector = np.asarray(rotation_vector, dtype=float)
+    angle = np.linalg.norm(rotation_vector)
+    if angle < 1e-12:
+        return quaternion_normalize(np.concatenate([[1.0], 0.5 * rotation_vector]))
+    return quaternion_from_axis_angle(rotation_vector / angle, angle)
+
+
+def rotation_matrix_to_quaternion(R: np.ndarray) -> np.ndarray:
+    """Scalar-first unit quaternion for a rotation matrix (Shepperd's method)."""
+    R = np.asarray(R, dtype=float)
+    trace = np.trace(R)
+    if trace > 0.0:
+        s = 2.0 * np.sqrt(1.0 + trace)
+        q = [0.25 * s, (R[2, 1] - R[1, 2]) / s, (R[0, 2] - R[2, 0]) / s, (R[1, 0] - R[0, 1]) / s]
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+        q = [(R[2, 1] - R[1, 2]) / s, 0.25 * s, (R[0, 1] + R[1, 0]) / s, (R[0, 2] + R[2, 0]) / s]
+    elif R[1, 1] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+        q = [(R[0, 2] - R[2, 0]) / s, (R[0, 1] + R[1, 0]) / s, 0.25 * s, (R[1, 2] + R[2, 1]) / s]
+    else:
+        s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+        q = [(R[1, 0] - R[0, 1]) / s, (R[0, 2] + R[2, 0]) / s, (R[1, 2] + R[2, 1]) / s, 0.25 * s]
+    q = quaternion_normalize(np.array(q))
+    return q if q[0] >= 0.0 else -q

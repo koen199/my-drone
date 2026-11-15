@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from simulations.control_system.euler import (
+from simulations.math_helper.rotation import (
     euler_to_rotation_matrix,
     rotation_matrix_to_euler,
     skew,

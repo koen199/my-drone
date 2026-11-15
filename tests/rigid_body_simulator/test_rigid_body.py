@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from simulations.rigid_body_simulator.frames import CoordinateSystem, Force, Torque, Vector
-from simulations.rigid_body_simulator.quaternion import (
+from simulations.math_helper import (
     quaternion_from_axis_angle,
     quaternion_to_rotation_matrix,
 )

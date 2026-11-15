@@ -9,9 +9,6 @@ Controller"), matching the rigid body simulator:
 transforms BODY-frame coordinates into the WORLD frame:
 
     v_n = R_nb @ v_b
-
-Beware: simulations.ahrs.euler.rotation_matrix_to_euler uses the TRANSPOSED
-convention (world -> body). To reuse it here you would have to pass R_nb.T.
 """
 from __future__ import annotations
 

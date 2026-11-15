@@ -1,14 +1,16 @@
 import numpy as np
 import pytest
 
-from simulations.rigid_body_simulator.quaternion import (
+from simulations.math_helper.quaternion import (
     quaternion_conjugate,
     quaternion_derivative,
     quaternion_from_axis_angle,
     quaternion_multiply,
     quaternion_normalize,
     quaternion_to_rotation_matrix,
+    rotation_matrix_to_quaternion,
 )
+from simulations.math_helper.rotation import euler_to_rotation_matrix
 
 IDENTITY = np.array([1.0, 0.0, 0.0, 0.0])
 
@@ -127,3 +129,10 @@ def test_derivative_matches_finite_difference():
     q_next = quaternion_normalize(q + dt * quaternion_derivative(q, omega))
     q_expected = quaternion_from_axis_angle(np.array([0.0, 0.0, 1.0]), 0.3 + dt)
     assert np.allclose(q_next, q_expected, atol=1e-9)
+
+
+def test_rotation_matrix_quaternion_round_trip():
+    for angles in [(0.0, 0.0, 0.0), (0.9, -0.6, 2.5), (3.0, 0.1, -3.0), (0.0, 1.5, 0.0)]:
+        R = euler_to_rotation_matrix(*angles)
+        q = rotation_matrix_to_quaternion(R)
+        np.testing.assert_allclose(quaternion_to_rotation_matrix(q), R, atol=1e-12)

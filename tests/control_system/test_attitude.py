@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from simulations.control_system.attitude import AttitudeController, orientation_error
-from simulations.control_system.euler import euler_to_rotation_matrix
+from simulations.math_helper import euler_to_rotation_matrix
 
 
 def test_zero_error_when_aligned():
