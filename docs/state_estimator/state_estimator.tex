@@ -1246,43 +1246,33 @@
 
 	\subsubsection{Magnetometer Observation Matrix}
 	
-	A 3-axis magnetometer measures the magnetic field vector directly in the drone's body frame ($b$). The measurement is affected by hard-iron distortions, which introduce an additive bias, as well as measurement noise.
-	
-	The raw magnetometer measurement is denoted by $\mathbf{z}_{\text{mag}}$. Its measurement model is:
+	A 3-axis magnetometer measures the magnetic field vector directly in the drone's body frame ($b$). The measurement model is:
 	
 	\begin{equation*}
 		\mathbf{z}_{\text{mag}} =
 		\mathbf{R}(\mathbf{q})^\top \mathbf{m}_n
-		+ \mathbf{b}_m
 		+ \mathbf{v}_{\text{mag}}
 	\end{equation*}
 	
-	where $\mathbf{q}$ is the true drone orientation, $\mathbf{m}_n$ is the Earth's magnetic field reference vector expressed in the navigation frame ($n$), $\mathbf{b}_m$ is the magnetometer bias, and $\mathbf{v}_{\text{mag}}$ represents measurement noise.
+	where $\mathbf{q}$ is the true drone orientation, $\mathbf{m}_n$ is the Earth's magnetic field reference vector expressed in the navigation frame ($n$), and $\mathbf{v}_{\text{mag}}$ represents measurement noise.
 	
 	\paragraph{Relating the measured and predicted magnetic field vectors}
 	
-	The filter maintains an estimate of the magnetometer bias, denoted by $\hat{\mathbf{b}}_m$. Before comparing the sensor measurement with the predicted magnetic field, we compensate for this estimated bias by subtracting it from the raw measurement:
-	
-	\begin{equation*}
-		\mathbf{z}_{\text{mag,corr}} =
-		\mathbf{z}_{\text{mag}} - \hat{\mathbf{b}}_m
-	\end{equation*}
-	
-	The resulting measurement is a bias-corrected estimate of the Earth's magnetic field in the body frame. It still contains measurement noise and any remaining magnetometer bias estimation error.
-	
-	The filter also predicts what the magnetometer should measure based on its current nominal orientation estimate $\hat{\mathbf{q}}$:
+	The filter predicts what the magnetometer should measure based on its current nominal orientation estimate $\hat{\mathbf{q}}$:
 	
 	\begin{equation*}
 		\hat{\mathbf{m}}_b =
 		\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n
 	\end{equation*}
 	
-	Both vectors are now expressed in the body frame. Their difference defines the magnetometer measurement residual:
+	Both vectors are expressed in the body frame. Their difference defines the magnetometer measurement residual:
 	
 	\begin{equation*}
 		\mathbf{r}_{\text{mag}} =
-		\mathbf{z}_{\text{mag,corr}} - \hat{\mathbf{m}}_b
+		\mathbf{z}_{\text{mag}} - \hat{\mathbf{m}}_b
 	\end{equation*}
+	
+	This residual represents the discrepancy between the measured and predicted magnetic field vectors. Ideally, it is caused by errors in the estimated orientation and measurement noise.
 	
 	\paragraph{Linearizing the attitude error}
 	
@@ -1295,7 +1285,29 @@
 		+ [\delta\boldsymbol{\theta}]_\times\right)
 	\end{equation*}
 	
-	Taking the transpose of both sides and using the fact that the transpose of a skew-symmetric matrix equals its negative gives:
+	where $\delta\boldsymbol{\theta}$ is the small attitude error rotation vector and $[\cdot]_\times$ denotes the skew-symmetric matrix corresponding to the cross product.
+	
+	Taking the transpose of both sides and using the property $(\mathbf{A}\mathbf{B})^\top = \mathbf{B}^\top\mathbf{A}^\top$, we obtain:
+	
+	\begin{align*}
+		\mathbf{R}(\mathbf{q})^\top
+		&\approx
+		\left(\mathbf{I}_{3\times3}
+		+ [\delta\boldsymbol{\theta}]_\times\right)^\top
+		\mathbf{R}(\hat{\mathbf{q}})^\top \\[4pt]
+		&= \left(\mathbf{I}_{3\times3}
+		+ [\delta\boldsymbol{\theta}]_\times^\top\right)
+		\mathbf{R}(\hat{\mathbf{q}})^\top
+	\end{align*}
+	
+	Since the transpose of a skew-symmetric matrix equals its negative,
+	
+	\begin{equation*}
+		[\delta\boldsymbol{\theta}]_\times^\top
+		= -[\delta\boldsymbol{\theta}]_\times
+	\end{equation*}
+	
+	the expression becomes:
 	
 	\begin{equation*}
 		\mathbf{R}(\mathbf{q})^\top \approx
@@ -1304,31 +1316,20 @@
 		\mathbf{R}(\hat{\mathbf{q}})^\top
 	\end{equation*}
 	
-	We now substitute this approximation into the raw magnetometer measurement model and subtract the estimated magnetometer bias:
+	We now substitute this approximation into the magnetometer measurement model:
 	
 	\begin{align*}
-		\mathbf{z}_{\text{mag,corr}}
+		\mathbf{z}_{\text{mag}}
 		&\approx
 		\left(\mathbf{I}
 		- [\delta\boldsymbol{\theta}]_\times\right)
 		\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n
-		+ \mathbf{b}_m
-		- \hat{\mathbf{b}}_m
 		+ \mathbf{v}_{\text{mag}} \\[6pt]
 		&= \mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n
 		- [\delta\boldsymbol{\theta}]_\times
 		\mathbf{R}(\hat{\mathbf{q}})^\top \mathbf{m}_n
-		+ \mathbf{b}_m
-		- \hat{\mathbf{b}}_m
 		+ \mathbf{v}_{\text{mag}}
 	\end{align*}
-	
-	We define the magnetometer bias estimation error as:
-	
-	\begin{equation*}
-		\delta\mathbf{b}_m =
-		\mathbf{b}_m - \hat{\mathbf{b}}_m
-	\end{equation*}
 	
 	Next, recall the definition of the predicted magnetic field:
 	
@@ -1339,15 +1340,16 @@
 	
 	This allows us to replace the rotation matrix multiplied by the magnetic field reference vector:
 	
-	\begin{align*}
-		\mathbf{z}_{\text{mag,corr}}
-		&\approx
+	\begin{equation*}
+		\mathbf{z}_{\text{mag}}
+		\approx
 		\hat{\mathbf{m}}_b
 		- [\delta\boldsymbol{\theta}]_\times
 		\hat{\mathbf{m}}_b
-		+ \delta\mathbf{b}_m
 		+ \mathbf{v}_{\text{mag}}
-	\end{align*}
+	\end{equation*}
+	
+	At this point, the rotation matrix is no longer explicitly present because its effect is already contained in the predicted magnetic field $\hat{\mathbf{m}}_b$.
 	
 	Using the anti-commutativity property of the cross product,
 	
@@ -1366,15 +1368,14 @@
 		\delta\boldsymbol{\theta}
 	\end{equation*}
 	
-	Therefore, the bias-corrected magnetometer measurement becomes:
+	Therefore, the magnetometer measurement becomes:
 	
 	\begin{equation}
 		\boxed{
-			\mathbf{z}_{\text{mag,corr}} \approx
+			\mathbf{z}_{\text{mag}} \approx
 			\hat{\mathbf{m}}_b
 			+ [\hat{\mathbf{m}}_b]_\times
 			\delta\boldsymbol{\theta}
-			+ \delta\mathbf{b}_m
 			+ \mathbf{v}_{\text{mag}}
 		}
 	\end{equation}
@@ -1386,30 +1387,15 @@
 			\mathbf{r}_{\text{mag}} \approx
 			[\hat{\mathbf{m}}_b]_\times
 			\delta\boldsymbol{\theta}
-			+ \delta\mathbf{b}_m
 			+ \mathbf{v}_{\text{mag}}
 		}
 	\end{equation}
 	
-	This equation establishes the linear relationship between the measurement residual, the attitude error and the magnetometer bias estimation error. The cross-product matrix $[\hat{\mathbf{m}}_b]_\times$ maps a small attitude error into the corresponding change in the predicted magnetic field vector in the body frame. The bias estimation error contributes an additional term to the residual.
+	This equation establishes the linear relationship between the measurement residual and the attitude error. The cross-product matrix $[\hat{\mathbf{m}}_b]_\times$ maps a small attitude error into the corresponding change in the predicted magnetic field vector in the body frame.
 	
 	\paragraph{Constructing the observation matrix}
 	
-	The Kalman filter uses this linearized residual model to construct the observation Jacobian. The error-state vector is extended to include the magnetometer bias:
-	
-	\begin{equation*}
-		\delta\mathbf{x} =
-		\begin{bmatrix}
-			\delta\mathbf{p} &
-			\delta\mathbf{v} &
-			\delta\boldsymbol{\theta} &
-			\delta\mathbf{b}_a &
-			\delta\mathbf{b}_g &
-			\delta\mathbf{b}_m
-		\end{bmatrix}^{\top}
-	\end{equation*}
-	
-	Taking the partial derivatives with respect to the error-state components gives:
+	The Kalman filter uses this linearized residual model to construct the observation Jacobian. Taking the partial derivatives with respect to the error-state components gives:
 	
 	\begin{align*}
 		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{p}}
@@ -1418,15 +1404,13 @@
 		&= \mathbf{0}_{3\times3} \\[4pt]
 		\frac{\partial h_{\text{mag}}}{\partial \delta\boldsymbol{\theta}}
 		&= [\hat{\mathbf{m}}_b]_\times \\[4pt]
-		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{b}_a}
-		&= \mathbf{0}_{3\times3} \\[4pt]
 		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{b}_g}
 		&= \mathbf{0}_{3\times3} \\[4pt]
-		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{b}_m}
-		&= \mathbf{I}_{3\times3}
+		\frac{\partial h_{\text{mag}}}{\partial \delta\mathbf{b}_a}
+		&= \mathbf{0}_{3\times3}
 	\end{align*}
 	
-	Arranging these partial derivatives forms the $3\times18$ magnetometer observation matrix:
+	Arranging these partial derivatives forms the $3\times15$ magnetometer observation matrix:
 	
 	\begin{equation}
 		\boxed{
@@ -1436,8 +1420,7 @@
 				\mathbf{0}_{3\times3} &
 				[\hat{\mathbf{m}}_b]_\times &
 				\mathbf{0}_{3\times3} &
-				\mathbf{0}_{3\times3} &
-				\mathbf{I}_{3\times3}
+				\mathbf{0}_{3\times3}
 			\end{bmatrix}
 		}
 	\end{equation}
